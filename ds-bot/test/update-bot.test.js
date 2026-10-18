@@ -28,14 +28,14 @@ const TEAM = {
   questions: {},
 }
 
-function start() {
+function start({ served } = {}) {
   const home = mkdtempSync(join(tmpdir(), 'ds-bot-update-'))
   if (!existsSync(join(home, 'state.json'))) writeFileSync(join(home, 'state.json'), JSON.stringify(TEAM))
   const ctx = fakeContext()
   Object.assign(ctx, {
     llm: {
       listProviders: () => [{ id: 'deepseek', name: 'DeepSeek' }],
-      listModels: async () => [{ id: 'v4' }],
+      listModels: async () => served ?? [{ id: 'v4' }],
       resolveModelInfo: async () => ({}),
     },
     sessionController: {
@@ -76,6 +76,19 @@ test('a Bot cannot change another Bot; a Main Bot can', async (t) => {
   assert.equal(await tool('update_bot', { bot: 'Writer', role: '主笔' }, 'm1'), 'Updated Writer.')
   assert.equal(state().bots.b2.role, '主笔')
   assert.match(await tool('update_bot', { bot: 'Nobody' }, 'm1'), /^No Bot named Nobody/)
+})
+
+test('the image model is set and cleared, and a text-only model is refused', async (t) => {
+  const { tool, state, stop } = start({
+    served: [{ id: 'v4' }, { id: 'sight', inputModalities: ['text', 'image'] }, { id: 'plain', inputModalities: ['text'] }],
+  })
+  t.after(stop)
+  assert.equal(await tool('update_bot', { image_model: 'sight' }, 'b2'), 'Updated Writer.')
+  assert.equal(state().bots.b2.imageModel, 'deepseek/sight')
+  assert.match(await tool('update_bot', { image_model: 'plain' }, 'b2'), /cannot read images/)
+  assert.equal(state().bots.b2.imageModel, 'deepseek/sight')
+  assert.equal(await tool('update_bot', { image_model: '' }, 'b2'), 'Updated Writer.')
+  assert.equal(state().bots.b2.imageModel, undefined)
 })
 
 test('a group Session changes its own Bot; a Session outside the team changes nothing', async (t) => {

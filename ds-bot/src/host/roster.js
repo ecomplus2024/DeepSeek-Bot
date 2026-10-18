@@ -104,11 +104,12 @@ export function install(rt) {
     return holdName('bot', cleanName, () => buildBot(cleanName, options))
   }
 
-  async function buildBot(cleanName, { role = '', instructions = '', color, brief = '', createdBy, main = false, avatar, model, effort, workDir, copyOf, pickModel = false }) {
+  async function buildBot(cleanName, { role = '', instructions = '', color, brief = '', createdBy, main = false, avatar, model, effort, imageModel, workDir, copyOf, pickModel = false }) {
     const cleanAvatarValue = cleanAvatar(avatar)
     // The model is fixed at creation, so a later change of the DSH default leaves it alone.
     const modelRef = model ? await rt.resolveModel(model) : pickModel ? undefined : await rt.defaultModel()
     const effortId = modelRef !== undefined && effort !== undefined ? await rt.resolveEffort(modelRef, effort) : undefined
+    const imageRef = imageModel ? await rt.resolveModel(imageModel) : undefined
     const dir = workDir === undefined || workDir === null ? undefined : await rt.cleanWorkDir(workDir)
     const id = await createSession(cleanName, { dir })
     try {
@@ -121,6 +122,7 @@ export function install(rt) {
         ...(cleanAvatarValue ? { avatar: cleanAvatarValue } : {}),
         ...(modelRef ? { model: modelRef } : {}),
         ...(effortId ? { effort: effortId } : {}),
+        ...(imageRef ? { imageModel: imageRef } : {}),
         ...(dir ? { workDir: dir } : {}),
         instructions: String(instructions).trim(),
         createdAt: Date.now(),
@@ -186,7 +188,7 @@ export function install(rt) {
   async function duplicateBot(id) {
     const bot = rt.botOf(id)
     if (bot === undefined) throw new Error('Unknown Bot')
-    const served = (await rt.catalog()).some(entry => entry.ref === bot.model)
+    const served = new Set((await rt.catalog()).map(entry => entry.ref))
     // A folder that went away since leaves the copy in the team workspace.
     const workDir = bot.workDir !== undefined && await rt.isFolder(bot.workDir) ? bot.workDir : undefined
     // No await from here to createBot's check, so two copies at once get different names.
@@ -196,8 +198,9 @@ export function install(rt) {
       instructions: bot.instructions,
       color: bot.color,
       avatar: bot.avatar,
-      model: served ? bot.model : undefined,
-      effort: served ? bot.effort : undefined,
+      model: served.has(bot.model) ? bot.model : undefined,
+      effort: served.has(bot.model) ? bot.effort : undefined,
+      imageModel: served.has(bot.imageModel) ? bot.imageModel : undefined,
       workDir,
       copyOf: bot.id,
     })
@@ -238,6 +241,15 @@ export function install(rt) {
       if (patch.model === null || patch.model === '') delete bot.model
       else bot.model = await rt.resolveModel(patch.model)
       modelChanged = true
+    }
+    if (patch.imageModel !== undefined) {
+      if (patch.imageModel === null || patch.imageModel === '') delete bot.imageModel
+      else {
+        const ref = await rt.resolveModel(patch.imageModel)
+        const entry = (await rt.catalog()).find(item => item.ref === ref)
+        if (entry?.input !== undefined && !entry.input.includes('image')) throw new Error(`Model ${ref} cannot read images`)
+        bot.imageModel = ref
+      }
     }
     if (patch.effort !== undefined) {
       if (patch.effort === null || patch.effort === '') delete bot.effort

@@ -41,9 +41,9 @@ async function drain(stream) {
 // `ctx.llm.stream` runs the plugin's `llm/stream` listeners in order, as DSH does,
 // and then a route that turns down a request without a Session. `respond` gives the
 // text of each answer the route lets through.
-function start() {
+function start({ team = TEAM, served } = {}) {
   const home = mkdtempSync(join(tmpdir(), 'ds-bot-session-identity-'))
-  writeFileSync(join(home, 'state.json'), JSON.stringify(TEAM))
+  writeFileSync(join(home, 'state.json'), JSON.stringify(team))
   const bench = { tokens: 0, compacted: 0, respond: () => '', requests: [] }
   const compaction = {
     summarize() {},
@@ -55,6 +55,7 @@ function start() {
     async compactNow() {},
     async compactRegion() {},
   }
+  const models = served ?? [{ id: 'v4' }, { id: 'vision', inputModalities: ['text', 'image'] }]
   const ctx = fakeContext({ services: { compaction, tokenMeter: { measure: () => ({ totalTokens: bench.tokens }) } } })
   async function* route(options) {
     bench.requests.push(options)
@@ -68,9 +69,9 @@ function start() {
   Object.assign(ctx, {
     llm: {
       listProviders: () => [{ id: 'deepseek', name: 'DeepSeek' }],
-      listModels: async () => [{ id: 'v4' }, { id: 'vision', inputModalities: ['text', 'image'] }],
+      listModels: async () => models,
       resolveModelInfo: async (_provider, model) => ({
-        inputModalities: model === 'vision' ? ['text', 'image'] : ['text'],
+        inputModalities: models.find(item => item.id === model)?.inputModalities ?? ['text'],
         context: { contextWindow: 100_000 },
         defaultMaxTokens: 8_000,
         reasoning: { efforts: [{ id: 'off' }, { id: 'high' }] },
@@ -100,7 +101,8 @@ function start() {
   const stop = async () => {
     await ctx.dispose()
     // A reading is cached on disk in the background.
-    if (bench.requests.some(request => request.model === 'vision' && request.sessionId !== undefined)) {
+    const isRead = request => (request.messages ?? []).some(message => (message.content ?? []).some(block => block?.type === 'image'))
+    if (bench.requests.some(request => isRead(request) && request.sessionId !== undefined)) {
       for (let tries = 0; tries < 100 && !existsSync(join(home, 'ocr.json')); tries += 1) await new Promise(resolve => setTimeout(resolve, 10))
     }
     rmSync(home, { recursive: true, force: true, maxRetries: 5 })
@@ -147,6 +149,36 @@ test('an image in a group is read for the group, and the group still relays its 
   const chunks = await drain(ctx.llm.stream({ provider: 'deepseek', model: 'v4', sessionId: 'r1', messages: [userText('Discuss the picture')] }))
   assert.ok(chunks.some(chunk => chunk.type === 'tool-call-delta' && chunk.name === 'group_relay'))
   assert.equal(bench.requests.length, 1)
+})
+
+test('an image is read by the model set for the Bot it is for', async (t) => {
+  const team = structuredClone(TEAM)
+  team.bots.b3.model = 'deepseek/sight'
+  const { rt, bench, stop } = start({
+    team,
+    served: [{ id: 'v4' }, { id: 'vision', inputModalities: ['text', 'image'] }, { id: 'sight', inputModalities: ['text', 'image'] }],
+  })
+  t.after(stop)
+  bench.respond = () => 'A red triangle.'
+  await rt.load()
+  const [reading] = await rt.imagesForGroup([attachment], 'r1')
+  assert.match(reading, /read by sight:\]\nA red triangle\./)
+  assert.deepEqual(bench.requests.map(request => [request.model, request.sessionId]), [['sight', 'r1']])
+})
+
+test('a Bot on a text-only model still names its image model for a reading', async (t) => {
+  const team = structuredClone(TEAM)
+  team.bots.b3.imageModel = 'deepseek/sight'
+  const { rt, bench, stop } = start({
+    team,
+    served: [{ id: 'v4' }, { id: 'vision', inputModalities: ['text', 'image'] }, { id: 'sight', inputModalities: ['text', 'image'] }],
+  })
+  t.after(stop)
+  bench.respond = () => 'A red triangle.'
+  await rt.load()
+  const [reading] = await rt.imagesForGroup([attachment], 'r1')
+  assert.match(reading, /read by sight:\]\nA red triangle\./)
+  assert.deepEqual(bench.requests.map(request => [request.model, request.sessionId]), [['sight', 'r1']])
 })
 
 test('the Session hooks pass DS Bot\'s own requests through, and still act on a Session\'s own rounds', async (t) => {

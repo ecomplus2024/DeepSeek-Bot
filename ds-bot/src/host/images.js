@@ -51,14 +51,24 @@ export function install(rt) {
     }
   }
 
-  // The configured `ocrModel` first, then served models that declare image input, the
-  // DSH default among them first.
-  async function ocrRoute() {
+  // The Bot a reading runs for: the owner of a Bot Session, or the admin of the
+  // group whose shared log the reading is written to.
+  const readingOwner = (sessionId) => {
+    const self = rt.selfOf(sessionId)
+    return self === undefined ? rt.botOf(rt.roomOf(sessionId)?.admin ?? undefined) : rt.botOf(self)
+  }
+
+  // The configured `ocrModel` first, then the Bot's own `imageModel` pick, the
+  // model it runs on, then served models that declare image input, DSH default
+  // first.
+  async function ocrRoute(sessionId) {
     const models = await rt.catalog()
     const served = new Set(models.map(entry => entry.ref))
     const declared = models.filter(entry => entry.input?.includes('image')).map(entry => entry.ref)
     const fallback = rt.defaultRef()
-    for (const ref of new Set([config.ocrModel, ...declared.filter(ref => ref === fallback), ...declared])) {
+    const bot = readingOwner(sessionId)
+    const own = bot === undefined ? undefined : await rt.desiredModel(bot)
+    for (const ref of new Set([config.ocrModel, bot?.imageModel, own, ...declared.filter(ref => ref === fallback), ...declared])) {
       const route = splitRef(ref)
       if (route && served.has(ref) && await readsImages(route.provider, route.model)) return { ref, ...route }
     }
@@ -88,7 +98,7 @@ export function install(rt) {
 
   // `sessionId` is the Session the reading is for; its usage counts there.
   async function readImage(attachment, sessionId) {
-    const route = await ocrRoute()
+    const route = await ocrRoute(sessionId)
     if (route === undefined) throw new Error('no vision model is available')
     const assembler = new BlockAssembler()
     for await (const chunk of ctx.llm.stream({

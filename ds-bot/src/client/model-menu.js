@@ -189,6 +189,48 @@ export function ModelMenu({ bot, roster, actions, run, wide = false, onPick, onP
       h('button', { type: 'button', role: 'menuitem', onClick: () => { close(); openHarnessSettings() } }, h(SlidersIcon), h('span', { className: 'bt-menu-label' }, t('Models and providers…')))), document.body) : null)
 }
 
+// The model that reads images for the Bot: a pick of its own, or the model it
+// runs on. Only models that declare image input are offered.
+export function ImageModelMenu({ bot, roster, actions, run, wide = false }) {
+  const { isOpen, shownPlace, leaving, button, menu, open, close, sheet } = useAnchoredMenu()
+  const models = (roster.models ?? []).filter(model => model.input === undefined || model.input.includes('image'))
+  const served = servedOf(roster, bot.imageModel)
+  const shown = bot.imageModel === undefined ? undefined : {
+    ref: bot.imageModel,
+    name: served?.name ?? bot.imageModel.split('/').slice(1).join('/'),
+    provider: served?.providerName ?? bot.imageModel.split('/')[0],
+    served: served !== undefined,
+  }
+  const toggle = () => {
+    if (isOpen) { close(); return }
+    void actions?.refreshModels?.()
+    open()
+  }
+  const pick = (ref) => {
+    close()
+    if (ref !== bot.imageModel) void run(actions.updateBot(bot.id, { imageModel: ref ?? null }))
+  }
+  return h(Fragment, null,
+    h('button', {
+      ref: button, type: 'button', className: 'bt-model-trigger', 'data-wide': wide || undefined,
+      'aria-haspopup': 'menu', 'aria-expanded': isOpen,
+      'aria-label': t('Image model: {model}', { model: shown?.name ?? t('Default') }),
+      'data-missing': shown !== undefined && !shown.served && models.length > 0 ? '' : undefined, onClick: toggle,
+    },
+    h('span', { className: 'bt-model-copy' },
+      h('span', { className: 'bt-model-name' }, shown?.name ?? t('Same as the Bot model')),
+      shown ? h('span', { className: 'bt-model-provider' }, shown.served || models.length === 0 ? shown.provider : t('{provider} · not available', { provider: shown.provider })) : null),
+    h(Caret)),
+    shownPlace ? createPortal(h('div', { ref: menu, className: `bt-menu bt-model-menu${sheet ? ' bt-sheet' : shownPlace.bottom !== undefined ? ' bt-menu-up' : ''}`, role: 'menu', 'aria-label': t('Image model for {name}', { name: bot.name }), style: sheet ? undefined : shownPlace, 'data-leaving': leaving || undefined },
+      h('button', { type: 'button', role: 'menuitemradio', 'aria-checked': bot.imageModel === undefined, onClick: () => pick(null) },
+        h('span', { className: 'bt-menu-label' }, t('Same as the Bot model')),
+        h('span', { className: 'bt-model-tick', 'aria-hidden': true }, bot.imageModel === undefined ? h(CheckIcon) : null)),
+      models.length > 0 ? h(ModelRows, { roster: { ...roster, models }, current: bot.imageModel, onPick: pick })
+        : h('div', { className: 'bt-model-none' }, t('No models can read images yet.')),
+      h('div', { className: 'bt-menu-sep', role: 'separator' }),
+      h('button', { type: 'button', role: 'menuitem', onClick: () => { close(); openHarnessSettings() } }, h(SlidersIcon), h('span', { className: 'bt-menu-label' }, t('Models and providers…')))), document.body) : null)
+}
+
 // The card a Bot's chat opens on while the Bot has no model, or has one that is no
 // longer served. The first Main Bot greets the user only after a pick.
 export function ModelChoiceDock({ sessionId, useRoster, actions }) {
