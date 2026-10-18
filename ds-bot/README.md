@@ -26,6 +26,7 @@ Tested with dsh `0.2.0-rc.2` (Web and Desktop) on Linux.
 - **Memory**: each Bot keeps notes across all its conversations, and the team shares one more. See [Memory](#memory).
 - **Web search**: see [Web search](#web-search).
 - **Bot browser (dsh Desktop only)**: see [Bot browser](#bot-browser).
+- **GemLogin browsers**: a Bot can drive a real [GemLogin](https://gemlogin.vn) profile (proxy, fingerprint and cookies included) through Puppeteer — see [GemLogin](#gemlogin).
 - **Images**: for a model that cannot read images, a vision model first turns the image into text.
 - **Secrets**: a Bot asks for an API key or token with a card in its own chat and never sees the value. See [Secrets](#secrets).
 - **Usage**: Settings → Usage shows token usage by time (24 hours to 12 months, or days picked on a calendar), by Bot and by model, with a page for each Bot and each model. Calls that a Session logs are read from the logs, so older chats count too. Calls that leave no log (checkpoints, handoff notes, the steward, image readings, dsh titles and compaction) are counted while they stream, from the time the plugin runs. Tokens only, no cost.
@@ -75,6 +76,8 @@ Options go in the profile's `cordis.patch.yml`, under the `bot` entry. All of th
     updateCheck: true               # look for a newer DS Bot when a window opens; default true
     updateRegistry: https://registry.example/   # ask only this npm registry for updates
     github: false                   # hide the GitHub connector; default shown in Connectors
+    gemlogin: http://localhost:1010 # the GemLogin app's local API; false turns the tools off
+    ocrModel: provider/model        # pin one model to read images for every Bot
 ```
 
 **Updates**: when a window opens, DS Bot asks where it was installed from for a newer release: the npm registry (the one the DSH plugin manager installs from, then its fallbacks), or the latest GitHub release for a `github:…#vX.Y.Z` install. A newer version shows a cloud button at the top right of the sidebar; **Update** reinstalls DS Bot through the DSH plugin manager, and the new version runs from the next DSH start. A linked or local checkout is never offered an update. Settings → About DS Bot shows the same state, with **Check for updates** to ask again at once.
@@ -87,6 +90,7 @@ Model providers are set up with dsh's `llm-pi-ai` plugin in `cordis.patch.yml`. 
 
 - Give every model a `contextWindow`. DS Bot takes its lines from it: the usable window is the window minus the reply reserve (`maxTokens`), the hard line is 95% of that, and the check line is `checkRatio` of it. A model without `contextWindow` gets the adapter's default (262,144 tokens for `llm-pi-ai`), which may be wrong for that model; a model that reports no window at all counts as 500,000.
 - To send images, the provider needs `defaultInput: [ text, image ]`.
+- A model that cannot see gets its images read aloud: `ocrModel` pins one reader for the whole team, else the Bot's **Image model** pick (its details or settings, or `update_bot`'s `image_model`) is used, else its own model, else any served model that reads images.
 - Keep API keys out of the repository. Use dsh's own key storage or environment variables.
 
 ## Memory
@@ -154,6 +158,17 @@ In dsh Desktop, a Bot's chat header has a globe button. It opens that Bot's own 
 - The browser panel and the details drawer share the right column; opening one closes the other. Switching chats switches the panel to that Bot. Deleting a Bot clears its browser and saved address.
 
 dsh Web has no browser panel and no `read_browser` tool.
+
+## GemLogin
+
+When the [GemLogin](https://gemlogin.vn) app runs on the same machine as the plugin, a Bot can drive one of its profiles as a real browser. Unlike the Bot browser panel — which the user steers — this browser answers to the Bot. The design note is [docs/plans/2026-10-18-gemlogin.md](../docs/plans/2026-10-18-gemlogin.md).
+
+- `gemlogin_profiles` lists profiles and groups; `gemlogin_open` starts a profile through the app's local API (default `http://localhost:1010`) and attaches `puppeteer-core` to the debug address it returns; `gemlogin_close` closes it.
+- `gemlogin_browse` works the open browser: `navigate`, `read` (page text with controls marked `[n]`), `click` and `type` (by `[n]` or a CSS selector), `press`, `scroll`, `tabs`/`use_tab`, `back`/`forward`/`reload`, `wait_for`/`wait`, `screenshot` (saved under `<home>/gemlogin/shots/`) and `evaluate` (JavaScript in the page).
+- Profiles open minimized by default (`hidden: false` or `win_pos` overrides) — Windows snaps a fully off-screen window back on, so hidden means on the taskbar, not invisible; pages keep running and rendering either way. The `show` and `hide` actions restore/minimize the window through CDP — `show` when the user asks to watch or must do a step by hand, `hide` to put it back; `hide` remembers the bounds it replaces.
+- A Bot's open GemLogin sessions also show as cards in its Browser tab: a live JPEG preview refreshed every two seconds — the off-screen window still renders through CDP — a Show window / Hide window button, and clicking the picture clicks that spot in the real page. The preview is a frame stream with a click bridge, not an embedded webview: an external Chrome process cannot render inside the panel, and DSH offers no API for that. `click` also takes `x`/`y` viewport pixels for the few spots no ref or selector can point at.
+- A profile belongs to the Bot that opened it: other Bots cannot touch it, a Main Bot can. A connection that dies is reattached on the next action.
+- Proxy credentials in listings and password field values in reads are masked.
 
 ## Secrets
 
@@ -241,7 +256,7 @@ dev/check.sh                             # all checks (see below)
 | Path | Purpose |
 |---|---|
 | `index.js` | Host entry: installs the `src/host/` modules in order |
-| `src/host/` | Host: team and storage (`roster`, `store`), tools (`tools`), turns and delivery (`turns`, `delivery`), group chats (`groups`), chat parts, the context steward and the index (`parts`, `steward`, `chat-index`), image text (`images`), secrets (`secrets`), Bot browser (`browser`), the `POST api/bot` route (`channel`) |
+| `src/host/` | Host: team and storage (`roster`, `store`), tools (`tools`), turns and delivery (`turns`, `delivery`), group chats (`groups`), chat parts, the context steward and the index (`parts`, `steward`, `chat-index`), image text (`images`), secrets (`secrets`), Bot browser (`browser`), GemLogin browsers (`gemlogin`), the `POST api/bot` route (`channel`) |
 | `src/client/` | Browser source: sidebar, chat header, transcript cells, panels and dialogs, themes, Bot browser panel |
 | `client.js` | Built from `src/client/` by `scripts/build-client.mjs` (esbuild); committed |
 | `web-search.js` | The `auto` search provider; independent of the team code |

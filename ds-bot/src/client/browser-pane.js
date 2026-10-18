@@ -568,6 +568,12 @@ export const BROWSER_CSS = `
 .bt-bcard-new{display:flex;align-items:center;justify-content:center;gap:6px;height:40px;border:.5px dashed var(--bt-line-2);border-radius:12px;background:none;color:var(--bt-ink-3);font:inherit;font-size:12.5px;cursor:pointer}
 .bt-bcard-new:hover{color:var(--bt-ink);border-color:var(--bt-ink-3)}
 .bt-bcard-new svg{width:14px;height:14px}
+.bt-gem{display:flex;flex-direction:column;gap:12px}
+.bt-gem-shot{cursor:crosshair}
+.bt-gem-shot img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top;user-select:none}
+.bt-gem-badge{flex:none;font-size:10.5px;line-height:15px;padding:1px 6px;border-radius:5px;background:var(--bt-hover);color:var(--bt-ink-3)}
+.bt-gem-toggle{flex:none;border:.5px solid var(--bt-line-2);border-radius:7px;background:none;color:var(--bt-ink-2);font:inherit;font-size:11.5px;line-height:16px;padding:3px 8px;cursor:pointer}
+.bt-gem-toggle:hover{color:var(--bt-ink);border-color:var(--bt-ink-3)}
 .bt-browser-empty-mark{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center}
 @media (prefers-reduced-motion:reduce){.bt-ptabs,.bt-panel-view,.bt-bcard,.bt-ptab-name{animation:none}}
 `

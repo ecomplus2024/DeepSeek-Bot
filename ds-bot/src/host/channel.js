@@ -84,7 +84,7 @@ export function install(rt) {
   })
   // What a host that only reads the team may still answer.
   // Updates change the dsh profile, not the team, so a reading host may run them too.
-  const READS = new Set(['state', 'models', 'efforts', 'earlier', 'room-progress', 'exchange', 'exchange-text', 'file-text', 'usage', 'schedules', 'memory-view', 'browser-wait', 'browser-result', 'diagnostics', 'diagnostics-log', 'diagnostics-clear', 'update-check', 'update-install', 'dsh-update-install', 'repo-stars', 'approval-answer', 'zalo-status', 'push-key', 'pair-status'])
+  const READS = new Set(['state', 'models', 'efforts', 'earlier', 'room-progress', 'exchange', 'exchange-text', 'file-text', 'usage', 'schedules', 'memory-view', 'browser-wait', 'browser-result', 'diagnostics', 'diagnostics-log', 'diagnostics-clear', 'update-check', 'update-install', 'dsh-update-install', 'repo-stars', 'approval-answer', 'zalo-status', 'push-key', 'pair-status', 'gemlogin-list', 'gemlogin-shot'])
 
   function setPrefs(body) {
     if (body.theme !== undefined) {
@@ -262,6 +262,14 @@ export function install(rt) {
           return ok(rt.pairView?.() ?? { enabled: false })
         case 'pair-mint':
           return ok(rt.pairMint?.() ?? { enabled: false })
+        case 'gemlogin-list':
+          return ok(await rt.gemLoginList?.(body.bot) ?? [])
+        case 'gemlogin-shot':
+          return ok(await rt.gemLoginShot?.(body.bot, body.profile) ?? { image: null })
+        case 'gemlogin-show':
+          return ok(await rt.gemLoginShow?.(body.bot, body.profile, body.show === true) ?? { ok: false })
+        case 'gemlogin-click':
+          return ok(await rt.gemLoginClick?.(body.bot, body.profile, body.fx, body.fy) ?? { ok: false })
         case 'zalo-start':
         case 'zalo-cancel':
         case 'zalo-logout':

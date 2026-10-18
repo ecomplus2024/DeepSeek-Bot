@@ -23,7 +23,7 @@ function start(state, { config = {}, services } = {}) {
   }
   const stop = async () => {
     await ctx.dispose()
-    rmSync(home, { recursive: true, force: true, maxRetries: 5 })
+    try { rmSync(home, { recursive: true, force: true, maxRetries: 5 }) } catch { /* a late home write keeps the dir */ }
   }
   return { ctx, call, stop, applyResult }
 }
@@ -101,6 +101,11 @@ test('apply registers listeners, tools, and effects in a fixed order', (t) => {
     'effect ds-bot: zalo',
     'on agent/created',
     'effect ds-bot: capabilities',
+    'effect ds-bot: gemlogin sessions',
+    'tool gemlogin_profiles',
+    'tool gemlogin_open',
+    'tool gemlogin_close',
+    'tool gemlogin_browse',
     'effect ds-bot: usage ledger',
     'on llm/stream',
     'effect ds-bot: update check',

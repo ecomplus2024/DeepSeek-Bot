@@ -7,7 +7,7 @@ import { GlobeIcon, Favicon } from './browser-pane.js'
 import { useEscape } from './overlay-hooks.js'
 import { BotSettingsForm } from './bot-settings.js'
 import { GroupSettingsForm, ROOM_MODES, roomSubtitle, shownMode } from './group-settings.js'
-import { ModelMenu, modelOf } from './model-menu.js'
+import { ModelMenu, ImageModelMenu, modelOf } from './model-menu.js'
 import { FolderMenu } from './folder-menu.js'
 import { MemoryRow } from './memory-panel.js'
 import { ScheduleSummary } from './schedules.js'
@@ -44,23 +44,67 @@ function PermissionRow({ bot, roster, actions, run }) {
     h(PermissionPicker, { catalog, saved: bot.permission ?? catalog.defaultPreset, repick: bot.permission === undefined, onPick: permission => run(actions.updateBot(bot.id, { permission })) }))
 }
 
+// The GemLogin profiles a Bot drives, as live cards inside the same Browser tab: the
+// host sends a fresh JPEG every two seconds while the panel is open (the window may
+// sit off-screen, yet CDP still renders it), and Show/Hide moves the OS window.
+function GemLoginCards({ bot, actions }) {
+  const [items, setItems] = useState(null)
+  const [shots, setShots] = useState({})
+  useEffect(() => {
+    if (typeof actions.gemLoginList !== 'function') return undefined
+    let dead = false
+    const pull = async () => {
+      const list = await actions.gemLoginList(bot.id)
+      if (dead || !Array.isArray(list)) return
+      setItems(list)
+      await Promise.all(list.map(async (item) => {
+        const shot = await actions.gemLoginShot(bot.id, item.profileId)
+        if (!dead && shot?.image) setShots(last => ({ ...last, [item.profileId]: shot }))
+      }))
+    }
+    void pull()
+    const timer = setInterval(pull, 2000)
+    return () => { dead = true; clearInterval(timer) }
+  }, [bot.id, actions])
+  if (!items?.length) return null
+  return h('div', { className: 'bt-gem' },
+    h('div', { className: 'bt-section-title' }, t('GemLogin browser')),
+    items.map((item, index) => h('div', { key: item.profileId, className: 'bt-bcard', style: { animationDelay: `${index * 30}ms` } },
+      h('div', { className: 'bt-bcard-shot bt-gem-shot', style: shots[item.profileId]?.width ? { aspectRatio: `${shots[item.profileId].width}/${shots[item.profileId].height}` } : undefined },
+        shots[item.profileId]
+          ? h('img', {
+              src: shots[item.profileId].image, alt: '', draggable: false, title: t('Click to interact'),
+              onClick: (event) => {
+                const box = event.currentTarget.getBoundingClientRect()
+                if (box.width > 0 && box.height > 0) void actions.gemLoginClick(bot.id, item.profileId, (event.clientX - box.left) / box.width, (event.clientY - box.top) / box.height)
+              },
+            })
+          : h('span', { className: 'bt-bcard-blank' }, h(GlobeIcon), h('span', null, item.name))),
+      h('div', { className: 'bt-bcard-row' },
+        h('span', { className: 'bt-bcard-title' }, `${item.name}${item.title || item.url ? ` · ${item.title || item.url}` : ''}`),
+        item.hidden ? h('span', { className: 'bt-gem-badge' }, t('hidden')) : null,
+        h('button', { type: 'button', className: 'bt-gem-toggle', onClick: () => { void actions.gemLoginShow(bot.id, item.profileId, item.hidden) } },
+          item.hidden ? t('Show window') : t('Hide window'))))))
+}
+
 // The Bot's browser inside the details page: its tabs as small window cards on
 // Desktop, a pointer there on web.
 function BrowserCards({ bot, sessionId, roster, actions, useBrowserTabs, useBrowserPages }) {
   const state = useBrowserTabs(map => map[bot.id] ?? EMPTY_TABS)
   const pages = useBrowserPages(map => map)
   useEffect(() => { actions.browserEnsure?.(bot.id) }, [bot.id])
+  const gem = h(GemLoginCards, { bot, actions })
   if (roster.browser !== true || !actions.browserShow) {
-    return h('div', { className: 'bt-muted' }, t('The browser is in the DSH Desktop app.'))
+    return h('div', { className: 'bt-bcards' }, gem, h('div', { className: 'bt-muted' }, t('The browser is in the DSH Desktop app.')))
   }
   if (state.ids.length === 0) {
-    return h('div', { className: 'bt-browser-empty-mark' },
+    return h('div', { className: 'bt-bcards' }, gem, h('div', { className: 'bt-browser-empty-mark' },
       h(BotMark, { bot, size: 40, state: 'idle', live: true }),
       h('div', { className: 'bt-browser-empty-title' }, t("{name}'s browser", { name: bot.name })),
       h('div', { className: 'bt-muted' }, t('Open a page here and {name} can read it with you. Logins and cookies stay with {name}; other Bots never see them.', { name: bot.name })),
-      h('button', { type: 'button', className: 'bt-browser-retry', onClick: () => actions.openBrowser(sessionId) }, t('Open browser')))
+      h('button', { type: 'button', className: 'bt-browser-retry', onClick: () => actions.openBrowser(sessionId) }, t('Open browser'))))
   }
-  return h('div', { className: 'bt-bcards' },
+  return h('div', { className: 'bt-bcards' }, gem,
     state.ids.map((tabId, index) => {
       const page = pages[tabId] ?? {}
       const label = page.title || shortUrl(page.url) || t('New tab')
@@ -242,6 +286,9 @@ export function DetailsDrawer({ sessionId, startRenaming, startTab, hasStrip, ro
           h('div', { className: 'bt-section-title' }, t('Model')),
           h(ModelMenu, { bot, roster, actions, run, wide: true }),
           modelOf(bot, roster) ? null : h('div', { className: 'bt-note' }, t('Pick a model and {name} can start.', { name: bot.name }))),
+        h('div', { key: 'image-model', className: 'bt-drawer-model' },
+          h('div', { className: 'bt-section-title' }, t('Image model')),
+          h(ImageModelMenu, { bot, roster, actions, run, wide: true })),
         h(PermissionRow, { key: 'permission', bot, roster, actions, run }),
         h('div', { key: 'folder', className: 'bt-drawer-model' },
           h('div', { className: 'bt-section-title' }, t('Working folder')),

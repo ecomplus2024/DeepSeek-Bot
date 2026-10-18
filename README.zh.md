@@ -72,6 +72,10 @@ ds bot 拥有群聊功能。群聊是非常好的多 bot 协作方式，但它�
 
 设置 → **能力** 是团队共享的 MCP 服务、技能和能力包列表。在 Bot 设置中启用能力后，从该 Bot 下一条消息开始生效，也适用于它参与的群聊。Bot 添加的本地 MCP 命令需要你先批准才能运行。有其他 Bot 在用的能力，只有你或主 Bot 能修改、删除。
 
+### GemLogin 浏览器
+
+当 [GemLogin](https://gemlogin.vn) 应用运行在同一台电脑上时，bot 可以通过 Puppeteer 驱动它的一个 profile 作为真实浏览器——自带代理、指纹和 cookie：打开 profile、读网页、点击、输入和截图，并在 bot 的浏览器标签页里实时预览每个打开的 profile。与由你操作的 bot 浏览器面板不同，这个浏览器听 bot 的。可用 `gemlogin` 选项关闭；详见 [`ds-bot/README.md`](ds-bot/README.md#gemlogin)。
+
 ### 用量
 
 在 设置 → 用量 里，可以按时间、按 bot、按模型查看 Token 用量。

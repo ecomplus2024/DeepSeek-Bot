@@ -72,6 +72,10 @@ Any bot can hand work to another bot with @. That bot does the work on its own, 
 
 Settings → **Capabilities** is a shared library of MCP servers, skills and packs. Add a capability to a Bot in its settings; it is available from that Bot's next message in its own chat and group chats. A local MCP command that a Bot adds needs your approval before it can run. While other Bots use a capability, only you or a Main Bot can change or delete it.
 
+### GemLogin browsers
+
+When the [GemLogin](https://gemlogin.vn) app runs on the same computer, a bot can drive one of its profiles as a real browser — proxy, fingerprint and cookies included — through Puppeteer: open the profile, read pages, click, type and take screenshots, with a live preview of each open profile in the bot's Browser tab. Unlike the bot's browser panel, which you steer, this browser answers to the bot. Turn it off with the `gemlogin` option; see [`ds-bot/README.md`](ds-bot/README.md#gemlogin).
+
 ### Usage
 
 In **Settings** → **Usage**, you can see token usage by time, by bot and by model.

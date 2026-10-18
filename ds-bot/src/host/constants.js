@@ -68,6 +68,7 @@ export const TEAM_TOOLS = [
   'read_group_chat', 'remember', 'forget', 'recall', 'read_browser',
   'list_capabilities', 'save_capability', 'delete_capability',
   'attach_capability', 'detach_capability',
+  'gemlogin_profiles', 'gemlogin_open', 'gemlogin_close', 'gemlogin_browse',
   'zalo_threads', 'zalo_read', 'zalo_send',
 ]
 
