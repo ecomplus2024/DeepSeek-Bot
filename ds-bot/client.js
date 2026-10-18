@@ -805,6 +805,18 @@ var ZH = {
   "Release notes": "发布说明",
   Open: "打开",
   Menu: "菜单",
+  // This device: push notes and device pairing
+  "This device": "本设备",
+  Notifications: "通知",
+  "A push note when a Bot waits for you.": "当 Bot 等待你处理时推送提醒。",
+  "This device cannot get push notes — they need HTTPS.": "此设备无法接收推送通知——需要 HTTPS。",
+  "Push is not running on this host": "这台主机没有开启推送",
+  "Notifications are off for this device": "此设备已关闭通知",
+  "Pair a device": "配对设备",
+  "Open DS Bot on the other device at port {port}; it asks for the PIN.": "在另一台设备上通过端口 {port} 打开 DS Bot，它会要求输入 PIN。",
+  "No device is asking now.": "目前没有设备在请求配对。",
+  "PIN tries are cooling down for a moment.": "PIN 尝试次数过多，正在冷却中。",
+  "A device is pairing — type this PIN on it": "有设备正在配对——请在它上面输入这个 PIN",
   // Feedback and errors
   Feedback: "反馈",
   "Report a problem": "报告问题",
@@ -1760,6 +1772,18 @@ var VI = {
   "Release notes": "Ghi chú phát hành",
   Open: "Mở",
   Menu: "Menu",
+  // This device: push notes and device pairing
+  "This device": "Thiết bị này",
+  Notifications: "Thông báo",
+  "A push note when a Bot waits for you.": "Nhận thông báo khi Bot đang chờ bạn.",
+  "This device cannot get push notes — they need HTTPS.": "Thiết bị này không nhận được thông báo đẩy — cần HTTPS.",
+  "Push is not running on this host": "Máy chủ này chưa bật thông báo đẩy",
+  "Notifications are off for this device": "Thiết bị này đang tắt thông báo",
+  "Pair a device": "Ghép đôi thiết bị",
+  "Open DS Bot on the other device at port {port}; it asks for the PIN.": "Mở DS Bot trên thiết bị kia qua cổng {port}; nó sẽ hỏi mã PIN.",
+  "No device is asking now.": "Hiện không có thiết bị nào đang yêu cầu ghép đôi.",
+  "PIN tries are cooling down for a moment.": "Nhập sai PIN quá nhiều lần, đang tạm khoá một lát.",
+  "A device is pairing — type this PIN on it": "Có thiết bị đang ghép đôi — nhập mã PIN này trên thiết bị đó",
   // Feedback and errors
   Feedback: "Phản hồi",
   "Report a problem": "Báo lỗi",
@@ -2269,7 +2293,7 @@ function createSource(initial) {
     }
   };
 }
-var EMPTY_ROSTER = { revision: -1, mainBotId: null, mainBotIds: [], bots: [], rooms: [], agents: [], exchangeTurns: {}, questions: {}, secrets: [], capabilities: [], capabilityStatuses: {}, secretRequests: {}, models: [], defaultModel: null, modelsKey: null, prefs: {}, zalo: { bots: {}, login: null }, byId: {}, roomsById: {}, agentsById: {}, agentOf: {}, ready: false };
+var EMPTY_ROSTER = { revision: -1, mainBotId: null, mainBotIds: [], bots: [], rooms: [], agents: [], exchangeTurns: {}, questions: {}, secrets: [], capabilities: [], capabilityStatuses: {}, secretRequests: {}, models: [], defaultModel: null, modelsKey: null, prefs: {}, zalo: { bots: {}, login: null }, pair: { enabled: false }, byId: {}, roomsById: {}, agentsById: {}, agentOf: {}, ready: false };
 var isMainOf = (roster, id) => id !== void 0 && (roster.mainBotIds ?? []).includes(id);
 function indexRoster(value) {
   const byId = {};
@@ -6363,6 +6387,12 @@ function TeamSidebar(props) {
       (0, import_react10.createElement)("button", { type: "button", className: "bt-round", "aria-label": t("New…"), title: t("New…"), onClick: () => actions.openNewChat("new") }, (0, import_react10.createElement)(PlusIcon))
     ),
     wide && roster.readOnly ? (0, import_react10.createElement)("div", { className: "bt-hint bt-read-only", role: "status" }, hostText(roster.readOnly)) : null,
+    wide && roster.pair?.pin ? (0, import_react10.createElement)(
+      "div",
+      { className: "bt-pair", role: "status" },
+      (0, import_react10.createElement)("span", { className: "bt-pair-copy" }, t("A device is pairing — type this PIN on it")),
+      (0, import_react10.createElement)("span", { className: "bt-pair-pin" }, roster.pair.pin)
+    ) : null,
     (0, import_react10.createElement)(
       "div",
       { ref: listRef, className: "bt-list", role: "region", "aria-label": t("Bot list") },
@@ -6742,6 +6772,8 @@ var SIDEBAR_CSS = `
 .bt-rail .bt-row{position:relative}
 .bt-rail .bt-pin{position:absolute;top:3px;left:calc(50% + 12px)}
 .bt-side .bt-read-only{margin:4px 8px 6px;padding:8px 10px;border-radius:10px;background:var(--bt-hover);font-size:12px;line-height:1.45;text-align:left}
+.bt-side .bt-pair{margin:4px 8px 6px;padding:8px 10px;border-radius:10px;background:color-mix(in srgb,var(--bt-accent) 10%,transparent);font-size:12px;line-height:1.45;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.bt-pair-pin{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:17px;font-weight:600;letter-spacing:.18em;color:var(--bt-accent);white-space:nowrap}
 [class*="_footArea"]:has(.bt-foot-account){grid-template-columns:auto minmax(0,1fr) auto;column-gap:6px}
 [class*="_footArea"]>[class*="_footerActions"]>div>.bt-foot-account{grid-column:1;order:1;display:inline-flex}
 [class*="_footArea"]:has(.bt-foot-account)>[class*="_footerActions"]>div>.bt-connect-wrap{grid-column:2}
@@ -12170,6 +12202,43 @@ body:not([data-bt-motion=quiet]) .bt-about-mark:hover .bt-mark[data-live][data-s
 @media (prefers-reduced-motion:reduce){.bt-star:hover .bt-star-icon,.bt-star-count{animation:none}}
 `;
 
+// src/client/pwa.js
+var pushSupported = () => window.isSecureContext && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+function installPwa() {
+  if (!("serviceWorker" in navigator) || !window.isSecureContext) return;
+  navigator.serviceWorker.register("/sw.js").catch(() => {
+  });
+}
+var pushSubscribed = async () => {
+  if (!pushSupported()) return null;
+  const registration = await navigator.serviceWorker.getRegistration("/");
+  return await registration?.pushManager.getSubscription() ?? null;
+};
+var urlB64ToUint8 = (value) => {
+  const padded = `${value.replace(/-/g, "+").replace(/_/g, "/")}${"=".repeat((4 - value.length % 4) % 4)}`;
+  return Uint8Array.from(atob(padded), (char) => char.charCodeAt(0));
+};
+async function subscribePush() {
+  const { enabled, publicKey } = await call("push-key");
+  if (!enabled || !publicKey) throw new Error("Push is not running on this host");
+  const permission = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
+  if (permission !== "granted") throw new Error("Notifications are off for this device");
+  const registration = await navigator.serviceWorker.ready;
+  const subscription = await registration.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: urlB64ToUint8(publicKey)
+  });
+  await call("push-subscribe", subscription.toJSON());
+  return subscription;
+}
+async function unsubscribePush() {
+  const subscription = await pushSubscribed();
+  if (subscription === null) return;
+  await call("push-unsubscribe", { endpoint: subscription.endpoint }).catch(() => {
+  });
+  await subscription.unsubscribe();
+}
+
 // src/client/settings.js
 var import_react31 = require("react");
 var capitalize2 = (word) => word[0].toUpperCase() + word.slice(1);
@@ -12244,8 +12313,45 @@ function GeneralPage({ roster, actions, run }) {
         { label: t("Classic Agent mode") },
         (0, import_react31.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", onClick: () => actions.setSurface("agent") }, t("Switch"))
       )
+    ),
+    (0, import_react31.createElement)(
+      SetSection,
+      { key: "device", title: t("This device") },
+      (0, import_react31.createElement)(NotifyRow, { key: "notify" }),
+      (0, import_react31.createElement)(PairRow, { key: "pair", pair: roster.pair })
     )
   ];
+}
+function NotifyRow() {
+  const [subscribed, setSubscribed] = (0, import_react31.useState)(null);
+  const [error, setError] = (0, import_react31.useState)("");
+  (0, import_react31.useEffect)(() => {
+    void pushSubscribed().then((sub) => setSubscribed(sub !== null)).catch(() => setSubscribed(false));
+  }, []);
+  if (!pushSupported()) {
+    return (0, import_react31.createElement)(SetRow, { label: t("Notifications"), hint: t("This device cannot get push notes — they need HTTPS.") });
+  }
+  const toggle = async (on) => {
+    setError("");
+    try {
+      if (on) await subscribePush();
+      else await unsubscribePush();
+      setSubscribed(on);
+    } catch (failure) {
+      setError(failure?.message ?? String(failure));
+    }
+  };
+  return (0, import_react31.createElement)(SetRow, {
+    label: t("Notifications"),
+    hint: error !== "" ? error : t("A push note when a Bot waits for you.")
+  }, (0, import_react31.createElement)(Switch, { on: subscribed === true, label: t("Notifications"), disabled: subscribed === null, onChange: toggle }));
+}
+function PairRow({ pair }) {
+  if (pair?.enabled !== true) return null;
+  return (0, import_react31.createElement)(SetRow, {
+    label: t("Pair a device"),
+    hint: t("Open DS Bot on the other device at port {port}; it asks for the PIN.", { port: pair.port })
+  }, pair.pin ? (0, import_react31.createElement)("span", { className: "bt-pair-pin" }, pair.pin) : (0, import_react31.createElement)("span", { className: "bt-set-hint" }, pair.cooldownUntil ? t("PIN tries are cooling down for a moment.") : t("No device is asking now.")));
 }
 function MainBotsSection({ roster, actions, run }) {
   const mains = (roster.mainBotIds ?? []).map((id) => roster.byId[id]).filter(Boolean);
@@ -14914,6 +15020,7 @@ function noticeApprovals({ work, roster, shownSession, openSession, since: since
 // src/client/index.js
 var inject = ["sessions", "uiWorkspace", "uiConversation", "slots", "theme", "layout"];
 function apply(ctx) {
+  installPwa();
   ctx.effect(() => installLocale(ctx.get("locale")), "ds-bot: interface copy");
   const roster = createSource(EMPTY_ROSTER);
   migrateStorage();
@@ -15014,6 +15121,7 @@ function apply(ctx) {
     if (value.connectors !== void 0 && JSON.stringify(value.connectors) !== JSON.stringify(current.connectors ?? [])) live2.connectors = value.connectors;
     if (value.capabilityStatuses !== void 0 && JSON.stringify(value.capabilityStatuses) !== JSON.stringify(current.capabilityStatuses ?? {})) live2.capabilityStatuses = value.capabilityStatuses;
     if (value.zalo !== void 0 && JSON.stringify(value.zalo) !== JSON.stringify(current.zalo ?? null)) live2.zalo = value.zalo;
+    if (value.pair !== void 0 && JSON.stringify(value.pair) !== JSON.stringify(current.pair ?? null)) live2.pair = value.pair;
     if (Object.keys(live2).length > 0 && current.ready) roster.set({ ...current, ...live2 });
     if (value.unchanged || value.revision === current.revision && value.modelsKey === current.modelsKey) return;
     if (Object.keys(seenAt).length === 0) leaveVisits([...value.bots, ...value.rooms].map((entry) => entry.id));

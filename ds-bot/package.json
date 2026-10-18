@@ -47,6 +47,7 @@
     "check": "sh dev/check.sh"
   },
   "dependencies": {
+    "web-push": "3.6.7",
     "zca-js": "2.2.0"
   },
   "peerDependencies": {

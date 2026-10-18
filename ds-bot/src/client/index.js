@@ -36,10 +36,12 @@ import { USER_MESSAGE_CSS, UserMessageCell, canDrawUserMessages } from './user-m
 import { noticeApprovals } from './approval-notices.js'
 import { isPhone, layoutFrame, drawerOpen } from './mobile.js'
 import { addEscapeLayer } from './overlay-hooks.js'
+import { installPwa } from './pwa.js'
 
 export const inject = ['sessions', 'uiWorkspace', 'uiConversation', 'slots', 'theme', 'layout']
 
 export function apply(ctx) {
+  installPwa()
   ctx.effect(() => installLocale(ctx.get('locale')), 'ds-bot: interface copy')
   const roster = createSource(EMPTY_ROSTER)
   migrateStorage()
@@ -150,6 +152,7 @@ export function apply(ctx) {
     if (value.connectors !== undefined && JSON.stringify(value.connectors) !== JSON.stringify(current.connectors ?? [])) live.connectors = value.connectors
     if (value.capabilityStatuses !== undefined && JSON.stringify(value.capabilityStatuses) !== JSON.stringify(current.capabilityStatuses ?? {})) live.capabilityStatuses = value.capabilityStatuses
     if (value.zalo !== undefined && JSON.stringify(value.zalo) !== JSON.stringify(current.zalo ?? null)) live.zalo = value.zalo
+    if (value.pair !== undefined && JSON.stringify(value.pair) !== JSON.stringify(current.pair ?? null)) live.pair = value.pair
     if (Object.keys(live).length > 0 && current.ready) roster.set({ ...current, ...live })
     if (value.unchanged || (value.revision === current.revision && value.modelsKey === current.modelsKey)) return
     // On a browser with no visit record yet, everything already there counts as seen.

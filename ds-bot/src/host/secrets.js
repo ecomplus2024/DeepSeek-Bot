@@ -412,6 +412,7 @@ export function install(rt) {
         askedAt: now,
       })
       trimRequests(list)
+      rt.pushWait?.('secret', { id: list.at(-1).id, botId: bot.id, sessionId: id })
       await rt.save()
       exec.concludeTurn?.()
       return secret

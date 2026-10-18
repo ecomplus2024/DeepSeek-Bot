@@ -78,10 +78,13 @@ export function install(rt) {
     connectors: rt.connectorsView(),
     capabilityStatuses: rt.capabilityStatusesView(),
     zalo: rt.zaloLive?.() ?? { bots: {}, login: null },
+    // The gate PIN shows only to browsers already past dsh auth — the gate never
+    // answers it: remote clients type what this side displays.
+    pair: rt.pairView?.() ?? { enabled: false },
   })
   // What a host that only reads the team may still answer.
   // Updates change the dsh profile, not the team, so a reading host may run them too.
-  const READS = new Set(['state', 'models', 'efforts', 'earlier', 'room-progress', 'exchange', 'exchange-text', 'file-text', 'usage', 'schedules', 'memory-view', 'browser-wait', 'browser-result', 'diagnostics', 'diagnostics-log', 'diagnostics-clear', 'update-check', 'update-install', 'dsh-update-install', 'repo-stars', 'approval-answer', 'zalo-status'])
+  const READS = new Set(['state', 'models', 'efforts', 'earlier', 'room-progress', 'exchange', 'exchange-text', 'file-text', 'usage', 'schedules', 'memory-view', 'browser-wait', 'browser-result', 'diagnostics', 'diagnostics-log', 'diagnostics-clear', 'update-check', 'update-install', 'dsh-update-install', 'repo-stars', 'approval-answer', 'zalo-status', 'push-key', 'pair-status'])
 
   function setPrefs(body) {
     if (body.theme !== undefined) {
@@ -251,6 +254,12 @@ export function install(rt) {
           return ok(await rt.connectorEndpoint(endpoint, body))
         case 'zalo-status':
           return ok(rt.zaloLive?.() ?? { bots: {}, login: null })
+        case 'push-key':
+        case 'push-subscribe':
+        case 'push-unsubscribe':
+          return ok(await rt.pushEndpoint?.(endpoint, body) ?? { enabled: false })
+        case 'pair-status':
+          return ok(rt.pairView?.() ?? { enabled: false })
         case 'zalo-start':
         case 'zalo-cancel':
         case 'zalo-logout':

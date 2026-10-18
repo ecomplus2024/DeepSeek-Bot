@@ -550,6 +550,7 @@ export function install(rt) {
         ...(args.allowCustom === true ? { allowCustom: true } : {}),
         askedAt: Date.now(),
       }
+      rt.pushWait?.('question', { id: state.questions[id].id, botId: rt.chatOwners.get(id) ?? rt.groupOwners.get(id)?.botId, sessionId: id })
       await rt.save()
       exec.concludeTurn?.()
       return 'The card is on screen; the user\'s answer arrives as their next message.'

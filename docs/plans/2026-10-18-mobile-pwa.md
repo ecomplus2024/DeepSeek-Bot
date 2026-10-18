@@ -1,7 +1,7 @@
 # 手机界面与 PWA
 
-- 日期：2026-10-18（草案，待 Issue 确认后定稿）
-- 相关：#315、讨论 #50；PWA 与推送部分待建 Issue
+- 日期：2026-10-18（已实现于 fork，合入上游前补 Issue/Discussion）
+- 相关：#315、讨论 #50
 - 代码：`ds-bot/src/client/`（多处）、`ds-bot/src/host/pwa.js`（新增）、`ds-bot/index.js`（MODULES 挂载）、`ds-bot/src/host/pwa/`（图标资源）
 
 ## 为什么
@@ -31,25 +31,25 @@ DS Bot 的界面是桌面优先的：360–430px 视口下聊天列塌到接近 
 ### PWA（仅 `dsh web`）
 
 - 新模块 `src/host/pwa.js`：`ctx.get('webServer')` 为空即整体不挂载，Desktop 与 headless 不受影响。
-- `webServer.register` 三个 exact 路由：`/ds-bot/manifest.webmanifest`、`/ds-bot/icons/<file>`、`/ds-bot/sw.js`。这些是公开静态资源，不要求登录（index 的 `authorizeIndex` 和 `/api` 的 Host 校验都不覆盖插件路由）。
-- `webServer.tapIndex` 改写 index：manifest 链接指向自己的路由、viewport 补 `viewport-fit=cover`、加 `theme-color`（亮/暗两个 media 值）、`mobile-web-app-capable`、`apple-mobile-web-app-capable`、`apple-mobile-web-app-status-bar-style`、`apple-touch-icon`，页面品牌为 DS Bot。
+- `webServer.register` 路由：`/ds-bot/manifest.webmanifest`（exact）、`/ds-bot/icons/<file>`（prefix）、`/sw.js`（exact）。SW 必须挂在源站根路径——放 `/ds-bot/` 下 scope 就只有 `/ds-bot/`，管不到整站。这些是公开静态资源，不要求登录（index 的 `authorizeIndex` 和 `/api` 的 Host 校验都不覆盖插件路由）。
+- index meta 走 `webserver/index-inject` 结构化注入行（kind `html`，进 `<head>`）：manifest 链接、`theme-color`、`mobile-web-app-capable`、`apple-mobile-web-app-capable`、`apple-mobile-web-app-status-bar-style`、`apple-touch-icon`；`viewport-fit=cover` 由 `webServer.tapIndex` 补进已有的 viewport meta。页面品牌为 DS Bot。
 - Manifest：`name`/`short_name` "DS Bot"，`start_url "./"`，`scope "./"`，`display "standalone"`，`theme_color`/`background_color` 取默认主题；icons 给 192/512（any）+ maskable。图标原创，用 `characters.js` 的 mark 形象经脚本渲成 PNG，提交进 `src/host/pwa/`（`files` 已含 `src/host/`）。
 - 客户端在 `client.js` 里注册 SW（scope `/`）。SW 策略：导航和插件脚本走 network-first（插件更新不被旧缓存卡住），带 hash 的静态资源 cache-first，断网时导航回落到缓存过的页面。
 
 ### Web Push
 
-- Host 启动时生成 VAPID 密钥对，私钥只存 `DSH_HOME/bot/`（不进 state.json 明文之外的地方，也不进模型请求）；公钥经 `api/bot` 端点下发给客户端。
-- 客户端 SW 就绪后 `pushManager.subscribe`，订阅经 `api/bot` 存进 state.json，按 endpoint 去重；推送返回 404/410 即清掉该订阅。
-- 第一期只推「等用户介入」的事：`ask_user` 提问、权限审批、secret 请求。普通回合完成、普通消息不推。
-- payload 最小化：只有「哪个 Bot + 需要哪类介入 + 会话 id」，不含消息正文——payload 要经过浏览器厂商的 push 服务（FCM / Mozilla autopush），是第三方通道。点通知聚焦或打开对应会话。
-- 发送实现首选 `web-push` 包——它将成为插件第一个运行时依赖；若评审不接受依赖，再用 `node:crypto` 手写 ES256 JWT + aes128gcm（约几百行）。PR 里定。
+- Host 启动时生成 VAPID 密钥对，私钥与订阅都存 `DSH_HOME/bot/push.json`（0600，与 state.json、模型请求隔离）；公钥经 `api/bot` 的 `push-key` 端点下发给客户端。
+- 客户端在「设置 → 本设备」里手动开关：开启时请求通知权限 → `pushManager.subscribe` → 订阅经 `push-subscribe` 端点上报（按 endpoint 去重）；推送返回 404/410 即清掉该订阅。
+- 第一期只推「等用户介入」的事：`ask_user` 提问、权限审批、secret 请求（`rt.pushWait` 在 approvals/tools/secrets 三处挂点，按条目 id 去重）。普通回合完成、普通消息不推。
+- payload 最小化：只有「哪个 Bot + 需要哪类介入 + 条目 id」，不含消息正文——payload 要经过浏览器厂商的 push 服务（FCM / Mozilla autopush），是第三方通道。点通知聚焦或打开应用。
+- 发送用 `web-push@3.6.7`（钉死版本）。
 - 推送相关端点（公钥、订阅）一律走 `ctx.connection.fetch.register`（`/api/...`），白拿 Host/Origin fence + 会话 cookie；公开 `webServer.register` 只放 manifest、图标、SW 这类非敏感静态资源。
 
 ### 远程访问：本地配对 PIN 门（pair-gate）
 
 - `dsh web` 强制只绑 `127.0.0.1`；挂隧道（cloudflared / 反向代理）把手机接进来是部署方的事。暴露到公网后，`?token=` URL 本身是 bearer 凭证——泄漏即等于交出整台机器的操作权（Bot 有工具、能写文件）。单靠这个 URL 不够，前面要加一道本地配对门。
-- `pwa.js` 在插件进程内再开一个 HTTP 服务（独立端口，如 `port+1`），做反向代理门：无 gate cookie 的请求只回 PIN 表单页，不转发；有合法 cookie 才把请求（含 WS upgrade 的裸 socket 透传）代理到 `127.0.0.1:<dsh 端口>`。隧道一律指向 gate 端口。
-- PIN 流程：手机首次打开 → gate 通知插件 `pair-begin` → 插件生成 6 位 PIN（TTL 5 分钟）→ **PIN 只显示在本地已登录的界面里**（侧栏/设置页一张「正在配对的设备」卡片，经已鉴权的 `/api/bot` 下发）→ 手机输入 → `pair/verify` 校验通过 → gate 自签 cookie（HMAC-SHA256、HttpOnly、SameSite=Strict、30 天，仿 dsh 自身 cookie 做法）→ 照常进入 dsh 的 `?token=` 换 cookie 流程。结果是两道锁，每台设备各只做一次。
+- `pwa.js` 在插件进程内再开一个 HTTP 服务（`config.pairPort` 或环境变量 `DS_BOT_PAIR_PORT`，不配置则不监听），做反向代理门：无 gate cookie 的请求只回 PIN 表单页，不转发；有合法 cookie 才把请求（含 WS upgrade 的裸 socket 透传）代理到 `127.0.0.1:<dsh 端口>`。隧道一律指向 gate 端口。
+- PIN 流程：手机首次打开 → 表单页触发 `mintPin` 生成 6 位 PIN（TTL 5 分钟）→ **PIN 只显示在本地已登录的界面里**（侧栏横幅 + 「设置 → 本设备」卡片，经 `live().pair` 随状态下发到已鉴权浏览器）→ 手机输入 → `POST /pair` 校验通过 → gate 自签 cookie（`dsb_pair`，HMAC-SHA256、HttpOnly、SameSite=Strict、30 天，仿 dsh 自身 cookie 做法）→ 303 回跳表单里保存的原 URL（`next`），照常进入 dsh 的 `?token=` 换 cookie 流程。结果是两道锁，每台设备各只做一次；分享带 `?token=` 的 gate 链接可一次走完两步。
 - 防爆破：PIN 比对用 `timingSafeEqual`；连续 5 次错误作废该 PIN 并冷却 60 秒；PIN 一次性，验证成功即失效；没有进行中的 `pair-begin` 就不存在可猜的 PIN。
 - Gate 签名密钥 32 字节随机，存 `DSH_HOME/bot/pair-gate.json`；不经会话、不进模型请求。
 - 隧道侧仍需 HTTPS（SW/push 的硬门槛同样适用于这条链路）；`dsh web` 侧按实际域名加 `--trusted-host`。
@@ -75,3 +75,4 @@ DS Bot 的界面是桌面优先的：360–430px 视口下聊天列塌到接近 
 
 - 2026-10-18：初稿（提案）。
 - 2026-10-18：补充远程接入安全设计——插件内嵌 pairing gate（独立端口反代门 + 本地界面显示的 6 位一次性 PIN + HMAC gate cookie + 爆破限流）；push 端点改走已鉴权的 `/api`。
+- 2026-10-18：实现定稿。与草案的出入：SW 改挂 `/sw.js`（`/ds-bot/` 下 scope 只有 `/ds-bot/`）；meta 用 `webserver/index-inject` 注入行而非 tapIndex（viewport-fit 仍走 tapIndex）；订阅与 VAPID 存 `push.json` 而非 state.json；gate 端口由 `config.pairPort`/`DS_BOT_PAIR_PORT` 控制，表单 `next` 透传 `?token=` 链接；推送开关在「设置 → 本设备」，PIN 同时显示在侧栏横幅。已在 test bench 验证 manifest/icon/SW 路由、meta 注入、PIN 端到端（表单→cookie→代理→dsh token 流程）与 push 端点。

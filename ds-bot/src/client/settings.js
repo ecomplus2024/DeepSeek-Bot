@@ -6,7 +6,7 @@ import { CloseIcon, ChevronLeftIcon, ChevronRightIcon, ClockIcon, ConnectorIcon,
 import { AdminStar, BotAvatar, RoomAvatar } from './mark.js'
 import { openHarnessSettings } from './sidebar.js'
 import { useEscape } from './overlay-hooks.js'
-import { BotSettingsForm } from './bot-settings.js'
+import { BotSettingsForm, Switch } from './bot-settings.js'
 import { Segmented, useGlide } from './motion.js'
 import { GroupSettingsForm, NewGroupForm } from './group-settings.js'
 import { CreateBot } from './create-bot.js'
@@ -17,6 +17,7 @@ import { CapabilitiesPage } from './capability-settings.js'
 import { SchedulesPage } from './schedules.js'
 import { FeedbackIcon, FeedbackPage } from './feedback.js'
 import { AboutPage } from './about.js'
+import { pushSupported, pushSubscribed, subscribePush, unsubscribePush } from './pwa.js'
 import { t } from './i18n.js'
 
 const capitalize = word => word[0].toUpperCase() + word.slice(1)
@@ -64,7 +65,46 @@ function GeneralPage({ roster, actions, run }) {
     h(SetSection, { key: 'mode', title: t('Mode') },
       h(SetRow, { label: t('Classic Agent mode') },
         h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: () => actions.setSurface('agent') }, t('Switch')))),
+    h(SetSection, { key: 'device', title: t('This device') },
+      h(NotifyRow, { key: 'notify' }),
+      h(PairRow, { key: 'pair', pair: roster.pair })),
   ]
+}
+
+// Push notes are per device: the subscription lives in this browser's service
+// worker, not in the team state. Unsupported (no HTTPS, no PushManager) reads as
+// a disabled row with the reason.
+function NotifyRow() {
+  const [subscribed, setSubscribed] = useState(null)
+  const [error, setError] = useState('')
+  useEffect(() => { void pushSubscribed().then(sub => setSubscribed(sub !== null)).catch(() => setSubscribed(false)) }, [])
+  if (!pushSupported()) {
+    return h(SetRow, { label: t('Notifications'), hint: t('This device cannot get push notes — they need HTTPS.') })
+  }
+  const toggle = async (on) => {
+    setError('')
+    try {
+      if (on) await subscribePush()
+      else await unsubscribePush()
+      setSubscribed(on)
+    } catch (failure) { setError(failure?.message ?? String(failure)) }
+  }
+  return h(SetRow, {
+    label: t('Notifications'),
+    hint: error !== '' ? error : t('A push note when a Bot waits for you.'),
+  }, h(Switch, { on: subscribed === true, label: t('Notifications'), disabled: subscribed === null, onChange: toggle }))
+}
+
+// The gate PIN exists only while a remote device is asking; the sidebar shows a
+// banner then too, and this row restates it for whoever opened settings first.
+function PairRow({ pair }) {
+  if (pair?.enabled !== true) return null
+  return h(SetRow, {
+    label: t('Pair a device'),
+    hint: t('Open DS Bot on the other device at port {port}; it asks for the PIN.', { port: pair.port }),
+  }, pair.pin
+    ? h('span', { className: 'bt-pair-pin' }, pair.pin)
+    : h('span', { className: 'bt-set-hint' }, pair.cooldownUntil ? t('PIN tries are cooling down for a moment.') : t('No device is asking now.')))
 }
 
 // The first Main Bot is the sidebar tile. Picking another Bot there hands it the role
