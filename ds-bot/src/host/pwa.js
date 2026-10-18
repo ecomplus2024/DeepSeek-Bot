@@ -66,8 +66,9 @@ const reply = (res, status, type, body) => {
 
 // --- pairing gate ------------------------------------------------------------
 // The gate listens on its own port in front of dsh web. A remote device first
-// proves itself with a PIN that only the locally signed-in UI can see, gets a
-// signed cookie of its own, and only then reaches the real dsh auth.
+// proves itself with a PIN that only the locally signed-in UI can see and gets
+// a signed cookie of its own. dsh's own token exchange still runs, but the gate
+// answers it invisibly, so pairing is the only step a remote user ever takes.
 
 const GATE_COOKIE = 'dsb_pair'
 const PIN_TTL_MS = 5 * 60_000
@@ -254,6 +255,12 @@ export function install(rt) {
         .catch(error => rt.warn('ds-bot: pair-gate.json write failed: %s', error?.message ?? error))
     }
     const authed = req => gateCookieValid(gate.secret, cookieOf(req, GATE_COOKIE))
+    // The launch token this process would print for a manual login. The gate
+    // replays it upstream so a paired device never handles it.
+    const launchToken = (() => {
+      try { return new URL(ctx.connection?.authenticatedUrl?.('http://gate.invalid/') ?? '').searchParams.get('token') }
+      catch { return null }
+    })()
     const form = (res, status, error, next) => {
       res.writeHead(status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' })
       res.end(PIN_FORM(mintPin() !== null, error, next))
@@ -288,13 +295,33 @@ export function install(rt) {
         else { res.writeHead(403); res.end('pairing required') }
         return
       }
-      // Paired: proxy verbatim (Host kept, so the dsh cookie binds to this origin).
-      const upstream = httpRequest(
-        { host: '127.0.0.1', port: web.port, path: req.url, method: req.method, headers: req.headers },
-        (reply) => { res.writeHead(reply.statusCode ?? 502, reply.headers); reply.pipe(res) },
-      )
-      upstream.on('error', () => { if (!res.headersSent) res.writeHead(502); res.end() })
-      req.pipe(upstream)
+      // Paired: proxy verbatim (Host kept, so the dsh cookie binds to this
+      // origin). When dsh 401s an index request the gate retries once with the
+      // launch token, letting dsh mint its cookie without the token ever
+      // reaching the browser.
+      const pipe = (path, retried) => {
+        const upstream = httpRequest(
+          { host: '127.0.0.1', port: web.port, path, method: req.method, headers: req.headers },
+          (reply) => {
+            const indexPath = new URL(req.url ?? '/', 'http://x').pathname
+            if (!retried && launchToken !== null && reply.statusCode === 401
+              && (req.method === 'GET' || req.method === 'HEAD') && (indexPath === '/' || indexPath === '/index.html')) {
+              reply.resume()
+              const url = new URL(req.url ?? '/', 'http://x')
+              url.pathname = '/'
+              url.searchParams.delete('token')
+              url.searchParams.set('token', launchToken)
+              pipe(url.pathname + url.search, true)
+              return
+            }
+            res.writeHead(reply.statusCode ?? 502, reply.headers)
+            reply.pipe(res)
+          },
+        )
+        upstream.on('error', () => { if (!res.headersSent) res.writeHead(502); res.end() })
+        req.pipe(upstream)
+      }
+      pipe(req.url, false)
     })
     server.on('upgrade', (req, socket, head) => {
       if (!authed(req)) { socket.destroy(); return }
