@@ -22,6 +22,15 @@ const contentOf = message => {
   return PLACEHOLDER[Object.keys(PLACEHOLDER).find(kind => type.endsWith(kind))] ?? '[message]'
 }
 
+// The photo's caption, when Zalo sends one, joins the text so the Bot sees it.
+const captionOf = message => {
+  const content = message?.data?.content
+  if (typeof content !== 'object' || content === null) return undefined
+  if (!String(message?.data?.msgType ?? '').endsWith('photo')) return undefined
+  const caption = String(content.title ?? '').trim()
+  return caption === '' ? undefined : caption
+}
+
 export const zaloSecretName = botId => `ZALO_SESSION_${String(botId).toUpperCase().replace(/[^A-Z0-9]/g, '_').slice(0, 40)}`
 
 export function install(rt) {
@@ -42,6 +51,50 @@ export function install(rt) {
     return mod?.default?.Zalo !== undefined ? mod.default : mod
   }
   const reason = error => rt.redactSecrets(String(error?.message ?? error)).slice(0, 300)
+
+  // A photo message carries its image URL in content.href (thumb is the low-res
+  // one). Downloads are bounded and failures just leave the [image] placeholder —
+  // Zalo links expire and some need session headers.
+  const IMAGE_MAX_BYTES = 15 * 1024 * 1024
+  const photoUrl = (message) => {
+    const content = message?.data?.content
+    if (typeof content !== 'object' || content === null) return undefined
+    if (!String(message?.data?.msgType ?? '').endsWith('photo')) return undefined
+    const url = String(content.href ?? content.thumb ?? '')
+    return /^https?:\/\//i.test(url) ? url : undefined
+  }
+  async function downloadImage(url, label) {
+    const attachments = ctx.get?.('attachments')
+    if (attachments === undefined) return undefined
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(15_000) })
+      if (!response.ok) return undefined
+      if (Number(response.headers.get('content-length') ?? 0) > IMAGE_MAX_BYTES) return undefined
+      const data = new Uint8Array(await response.arrayBuffer())
+      if (data.byteLength === 0 || data.byteLength > IMAGE_MAX_BYTES) return undefined
+      // Zalo's content-type is not reliable, so the declared type comes from the
+      // bytes themselves; anything unrecognized (an error page, an encrypted
+      // blob) falls back to the [image] placeholder.
+      const mediaType = data[0] === 0xFF && data[1] === 0xD8 ? 'image/jpeg'
+        : data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4E && data[3] === 0x47 ? 'image/png'
+        : data[0] === 0x47 && data[1] === 0x49 && data[2] === 0x46 ? 'image/gif'
+        : data[0] === 0x52 && data[1] === 0x49 && data[2] === 0x46 && data[3] === 0x46 && data[8] === 0x57 && data[9] === 0x45 && data[10] === 0x42 && data[11] === 0x50 ? 'image/webp'
+        : undefined
+      if (mediaType === undefined) {
+        rt.warn('ds-bot: zalo photo %s is not a known image format', label)
+        return undefined
+      }
+      return await attachments.saveImage({ data, mediaType, name: `zalo-photo.${mediaType.slice('image/'.length)}` })
+    } catch (error) {
+      rt.warn('ds-bot: zalo photo %s not attached: %s', label, reason(error))
+      return undefined
+    }
+  }
+  const imageAttachment = message => {
+    const url = photoUrl(message)
+    return url === undefined ? Promise.resolve(undefined) : downloadImage(url, message?.data?.msgId ?? '?')
+  }
+
   const teamOf = botId => state.zalo?.[botId]
   const bound = (botId) => { const team = teamOf(botId); return team?.account ? team : undefined }
 
@@ -80,7 +133,7 @@ export function install(rt) {
   // A `talk` turn owes the thread its reply. The waiter lives in roomWaiters, so
   // turns.js resolves it with the turn's text (or its failure) exactly like a
   // group round; the timeout matches the group's, refreshed by Session activity.
-  async function talkDeliver(botId, threadId, thread, entry) {
+  async function talkDeliver(botId, threadId, thread, entry, images) {
     const exchangeId = randomUUID()
     const reply = await new Promise(resolve => {
       let timer
@@ -103,6 +156,7 @@ export function install(rt) {
         exchangeId,
         note: `${thread.kind === 'group' ? `group "${thread.name ?? threadId}"` : 'direct message'} from ${entry.from} · your reply is sent back to Zalo`,
         text: entry.text,
+        ...(images !== undefined ? { images } : {}),
       }).catch(error => finish({ failure: { code: 'DELIVERY', message: String(error?.message ?? error).slice(0, 200) } }))
     })
     if (typeof reply === 'string' && reply.trim() !== '') {
@@ -116,9 +170,15 @@ export function install(rt) {
   }
 
   // A `watch` wake informs the Bot; nothing it writes in that turn is relayed.
-  async function wakeWatch(botId, threadId, thread, why) {
+  async function wakeWatch(botId, threadId, thread, why, images) {
     const text = (thread.buffer ?? []).slice(-ZALO_WAKE_LINES).map(line => `${line.from}: ${line.text}`).join('\n')
     if (text === '') return
+    // Photo links still living in the buffer are pulled again so the wake shows
+    // the Bot what it was pinged about; expired links just drop out.
+    const buffered = (await Promise.all((thread.buffer ?? []).filter(line => typeof line.img === 'string').slice(-4)
+      .map(line => downloadImage(line.img, `wake:${threadId}`)))).filter(file => file !== undefined)
+    images = [...(images ?? []), ...buffered]
+    if (images.length === 0) images = undefined
     await rt.deliver({
       toId: botId,
       role: 'zalo',
@@ -126,6 +186,7 @@ export function install(rt) {
       exchangeId: randomUUID(),
       note: `watch ${thread.kind === 'group' ? 'group' : 'chat'} "${thread.name ?? threadId}" · ${why} · speak there only with zalo_send; your reply here is not relayed`,
       text,
+      ...(images !== undefined ? { images } : {}),
     }).catch(error => rt.warn('ds-bot: zalo watch delivery failed: %s', error))
   }
 
@@ -140,17 +201,24 @@ export function install(rt) {
     if (String(message.data?.uidFrom ?? '') === String(team.account?.uid ?? '')) return
     const entry = {
       from: String(message.data?.dName ?? '').trim() || String(message.data?.uidFrom ?? 'someone'),
-      text: contentOf(message),
+      text: captionOf(message) ?? contentOf(message),
       ts: Date.now(),
+      // The photo URL is kept in the buffer so a later wake or zalo_read can
+      // still pull the image while the link lives; Zalo expires them.
+      ...(photoUrl(message) !== undefined ? { img: photoUrl(message) } : {}),
     }
     thread.buffer = [...(thread.buffer ?? []), entry].slice(-ZALO_BUFFER_MAX)
     void rt.save().catch(() => {})
     if (thread.mode === 'talk') {
+      const images = await imageAttachment(message).then(file => file === undefined ? undefined : [file])
       rt.warn('ds-bot: zalo talk message in %s from %s; delivering to %s', threadId, entry.from, botId)
-      return talkDeliver(botId, threadId, thread, entry)
+      return talkDeliver(botId, threadId, thread, entry, images)
     }
     const why = wakes(message, team, thread, entry)
-    if (why !== null) await wakeWatch(botId, threadId, thread, why)
+    if (why !== null) {
+      const images = await imageAttachment(message).then(file => file === undefined ? undefined : [file])
+      await wakeWatch(botId, threadId, thread, why, images)
+    }
   }
 
   function attachSession(botId, api, lib, saved) {
@@ -159,7 +227,19 @@ export function install(rt) {
     sessions.set(botId, entry)
     const listener = api.listener
     listener.onConnected?.(() => { if (sessions.get(botId) === entry) entry.state = 'ready' })
-    listener.onClosed?.(() => { if (sessions.get(botId) === entry) entry.state = 'off' })
+    listener.onClosed?.(() => {
+      if (sessions.get(botId) !== entry) return
+      entry.state = 'off'
+      // zca-js never reopens a closed socket; a dropped session retries a few
+      // times, back off a little each round, then gives up for a manual Reconnect.
+      entry.retries = (entry.retries ?? 0) + 1
+      if (entry.retries > 5) return
+      setTimeout(() => {
+        if (stopped || sessions.get(botId) !== entry) return
+        if (rt.secretValue(zaloSecretName(botId)) !== entry.saved) return
+        void connect(botId).catch(error => rt.warn('ds-bot: zalo reconnect for %s failed: %s', botId, error))
+      }, 15_000 * entry.retries)
+    })
     listener.onError?.((error) => { if (sessions.get(botId) === entry) { entry.state = 'error'; entry.error = reason(error) } })
     listener.onMessage?.((message) => { void onMessage(botId, message).catch(error => rt.warn('ds-bot: zalo message failed: %s', error)) })
     try { listener.start() } catch (error) { entry.state = 'error'; entry.error = reason(error) }
@@ -177,7 +257,8 @@ export function install(rt) {
     const saved = rt.secretValue(zaloSecretName(botId))
     if (saved === undefined || teamOf(botId)?.account == null) { detach(botId); return }
     const old = sessions.get(botId)
-    if (old !== undefined && old.saved === saved && old.state !== 'error') return
+    // Only a live session counts as already connected: 'off' and 'error' reconnect.
+    if (old !== undefined && old.saved === saved && (old.state === 'ready' || old.state === 'connecting')) return
     detach(botId)
     const entry = { state: 'connecting', saved }
     sessions.set(botId, entry)
@@ -408,18 +489,32 @@ export function install(rt) {
     }))
     ctx.tools.register(defineTool({
       name: 'zalo_read',
-      description: 'Read the recent messages buffered from a watched or talked Zalo thread. Name the thread by its exact name or id from zalo_threads.',
+      description: 'Read the recent messages buffered from a watched or talked Zalo thread. Name the thread by its exact name or id from zalo_threads. Photo messages come back as image attachments while their Zalo links still live.',
       parameters: { thread: { type: 'string', required: true, description: 'Exact thread name or id from zalo_threads' } },
-      output,
+      output: {
+        schema: { type: 'object', additionalProperties: false, properties: { text: { type: 'string' }, images: { type: 'array' } } },
+        render: (_args, value) => [
+          { type: 'text', text: String(value?.text ?? '') },
+          ...(Array.isArray(value?.images) ? value.images : []).map(attachment => ({ type: 'image', attachment })),
+        ],
+      },
       async execute(args, exec) {
         const { team, error } = await callerTeam(exec, 'zalo_read')
-        if (error !== undefined) return error
+        if (error !== undefined) return { text: error }
         const found = findThread(team, String(args.thread ?? ''))
-        if (found === undefined) return 'No such Zalo thread. Call zalo_threads for the list.'
+        if (found === undefined) return { text: 'No such Zalo thread. Call zalo_threads for the list.' }
         const [id, thread] = found
         const lines = (thread.buffer ?? []).map(line => `${new Date(line.ts).toISOString().slice(5, 16).replace('T', ' ')} ${line.from}: ${line.text}`)
-        if (lines.length === 0) return `Nothing buffered from "${thread.name ?? id}" yet.`
-        return [`"${thread.name ?? id}" — last ${lines.length} messages:`, ...lines].join('\n')
+        if (lines.length === 0) return { text: `Nothing buffered from "${thread.name ?? id}" yet.` }
+        // The last few buffered photo links get re-downloaded so the Bot can see
+        // them; Zalo expires them, so misses just drop out of the result.
+        const images = (await Promise.all((thread.buffer ?? []).filter(line => typeof line.img === 'string').slice(-4)
+          .map(line => downloadImage(line.img, `history:${id}`)))).filter(file => file !== undefined)
+        return {
+          text: [`"${thread.name ?? id}" — last ${lines.length} messages:`, ...lines].join('\n')
+            + (images.length > 0 ? `\n(${images.length} photo(s) attached below)` : ''),
+          ...(images.length > 0 ? { images } : {}),
+        }
       },
     }))
     ctx.tools.register(defineTool({

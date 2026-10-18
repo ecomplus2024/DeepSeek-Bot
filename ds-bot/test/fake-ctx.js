@@ -9,6 +9,11 @@ export function fakeAttachments() {
       files.set(ref.attachmentId, data)
       return ref
     },
+    async saveImage({ data, name, mediaType }) {
+      const ref = { attachmentId: `sha256:${files.size + 1}`, name, mediaType, width: 1, height: 1, bytes: data.length }
+      files.set(ref.attachmentId, data)
+      return ref
+    },
     async* readFileStream(ref) {
       const data = files.get(ref.attachmentId)
       if (data === undefined) throw new Error('no such file')

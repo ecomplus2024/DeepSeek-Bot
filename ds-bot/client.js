@@ -248,6 +248,11 @@ var ZH = {
   "No scheduled tasks yet. To add one, tell the Bot in its chat what to do and when.": "还没有定时任务。要添加，在对话里告诉 Bot 做什么、什么时候做。",
   "The browser is in the DSH Desktop app.": "浏览器在 DSH 桌面版应用里。",
   "New tab": "新标签页",
+  "GemLogin browser": "GemLogin 浏览器",
+  "Show window": "显示窗口",
+  "Hide window": "隐藏窗口",
+  "hidden": "已隐藏",
+  "Click to interact": "点击画面即可操作页面",
   "Close tab": "关闭标签页",
   "Open {title}": "打开 {title}",
   "Conversation details": "对话详情",
@@ -324,6 +329,12 @@ var ZH = {
   // Model menu
   Default: "默认",
   "Thinking level": "思考强度",
+  "Image model": "图片模型",
+  "Image model: {model}": "图片模型：{model}",
+  "Image model for {name}": "{name} 的图片模型",
+  "Same as the Bot model": "与 Bot 模型相同",
+  "No models can read images yet.": "还没有能读图的模型。",
+  "Reads images when the Bot cannot. Default: the model it runs on.": "Bot 自己的模型看不了图片时，由它来读。默认用 Bot 的模型。",
   "Model: {model}": "模型：{model}",
   none: "无",
   "Choose a model": "选择模型",
@@ -1215,6 +1226,11 @@ var VI = {
   "No scheduled tasks yet. To add one, tell the Bot in its chat what to do and when.": "Chưa có tác vụ hẹn giờ. Để thêm, hãy nói với Bot trong cuộc trò chuyện của nó việc cần làm và thời điểm.",
   "The browser is in the DSH Desktop app.": "Trình duyệt nằm trong ứng dụng DSH Desktop.",
   "New tab": "Thẻ mới",
+  "GemLogin browser": "Trình duyệt GemLogin",
+  "Show window": "Hiện cửa sổ",
+  "Hide window": "Ẩn cửa sổ",
+  "hidden": "đang ẩn",
+  "Click to interact": "Nhấn vào ảnh để thao tác trong trang",
   "Close tab": "Đóng thẻ",
   "Open {title}": "Mở {title}",
   "Conversation details": "Chi tiết cuộc trò chuyện",
@@ -1291,6 +1307,12 @@ var VI = {
   // Model menu
   Default: "Mặc định",
   "Thinking level": "Mức suy nghĩ",
+  "Image model": "Model đọc ảnh",
+  "Image model: {model}": "Model đọc ảnh: {model}",
+  "Image model for {name}": "Model đọc ảnh của {name}",
+  "Same as the Bot model": "Giống model của Bot",
+  "No models can read images yet.": "Chưa có model nào đọc được ảnh.",
+  "Reads images when the Bot cannot. Default: the model it runs on.": "Đọc ảnh khi model của Bot không xem được. Mặc định: model Bot đang chạy.",
   "Model: {model}": "Model: {model}",
   none: "không",
   "Choose a model": "Chọn model",
@@ -5439,7 +5461,7 @@ function TriggerCell({ node, sessionId, useRoster, useSessions, useTurnClock, us
   function triggerBody() {
     if (source.kind === "bot") {
       if (source.handoff === true) return roster.roomsById[sessionId] ? null : (0, import_react8.createElement)(EarlierParts, { sessionId, roster, actions });
-      if (source.role === "kickoff" || source.role === "room") return null;
+      if (source.role === "kickoff" || source.role === "room" || source.role === "zalo") return null;
       if (source.role === "secret" || deferred) return null;
       if (source.role === "post") {
         if (source.failed !== void 0 || source.resumed === true || source.stopped === true || source.done === true) return null;
@@ -7892,6 +7914,70 @@ function ModelMenu({ bot, roster, actions, run, wide = false, onPick, onPickEffo
     ), document.body) : null
   );
 }
+function ImageModelMenu({ bot, roster, actions, run, wide = false }) {
+  const { isOpen, shownPlace, leaving, button, menu, open, close, sheet } = useAnchoredMenu();
+  const models = (roster.models ?? []).filter((model) => model.input === void 0 || model.input.includes("image"));
+  const served = servedOf(roster, bot.imageModel);
+  const shown = bot.imageModel === void 0 ? void 0 : {
+    ref: bot.imageModel,
+    name: served?.name ?? bot.imageModel.split("/").slice(1).join("/"),
+    provider: served?.providerName ?? bot.imageModel.split("/")[0],
+    served: served !== void 0
+  };
+  const toggle = () => {
+    if (isOpen) {
+      close();
+      return;
+    }
+    void actions?.refreshModels?.();
+    open();
+  };
+  const pick2 = (ref) => {
+    close();
+    if (ref !== bot.imageModel) void run(actions.updateBot(bot.id, { imageModel: ref ?? null }));
+  };
+  return (0, import_react15.createElement)(
+    import_react15.Fragment,
+    null,
+    (0, import_react15.createElement)(
+      "button",
+      {
+        ref: button,
+        type: "button",
+        className: "bt-model-trigger",
+        "data-wide": wide || void 0,
+        "aria-haspopup": "menu",
+        "aria-expanded": isOpen,
+        "aria-label": t("Image model: {model}", { model: shown?.name ?? t("Default") }),
+        "data-missing": shown !== void 0 && !shown.served && models.length > 0 ? "" : void 0,
+        onClick: toggle
+      },
+      (0, import_react15.createElement)(
+        "span",
+        { className: "bt-model-copy" },
+        (0, import_react15.createElement)("span", { className: "bt-model-name" }, shown?.name ?? t("Same as the Bot model")),
+        shown ? (0, import_react15.createElement)("span", { className: "bt-model-provider" }, shown.served || models.length === 0 ? shown.provider : t("{provider} · not available", { provider: shown.provider })) : null
+      ),
+      (0, import_react15.createElement)(Caret)
+    ),
+    shownPlace ? (0, import_react_dom6.createPortal)((0, import_react15.createElement)(
+      "div",
+      { ref: menu, className: `bt-menu bt-model-menu${sheet ? " bt-sheet" : shownPlace.bottom !== void 0 ? " bt-menu-up" : ""}`, role: "menu", "aria-label": t("Image model for {name}", { name: bot.name }), style: sheet ? void 0 : shownPlace, "data-leaving": leaving || void 0 },
+      (0, import_react15.createElement)(
+        "button",
+        { type: "button", role: "menuitemradio", "aria-checked": bot.imageModel === void 0, onClick: () => pick2(null) },
+        (0, import_react15.createElement)("span", { className: "bt-menu-label" }, t("Same as the Bot model")),
+        (0, import_react15.createElement)("span", { className: "bt-model-tick", "aria-hidden": true }, bot.imageModel === void 0 ? (0, import_react15.createElement)(CheckIcon) : null)
+      ),
+      models.length > 0 ? (0, import_react15.createElement)(ModelRows, { roster: { ...roster, models }, current: bot.imageModel, onPick: pick2 }) : (0, import_react15.createElement)("div", { className: "bt-model-none" }, t("No models can read images yet.")),
+      (0, import_react15.createElement)("div", { className: "bt-menu-sep", role: "separator" }),
+      (0, import_react15.createElement)("button", { type: "button", role: "menuitem", onClick: () => {
+        close();
+        openHarnessSettings();
+      } }, (0, import_react15.createElement)(SlidersIcon), (0, import_react15.createElement)("span", { className: "bt-menu-label" }, t("Models and providers…")))
+    ), document.body) : null
+  );
+}
 function ModelChoiceDock({ sessionId, useRoster, actions }) {
   const roster = useRoster((value) => value);
   const bot = roster.byId[sessionId];
@@ -9396,6 +9482,12 @@ function BotSettingsForm({ bot, roster, actions, run }) {
         { className: "bt-set-row bt-bs-row" },
         (0, import_react20.createElement)("span", { className: "bt-set-copy" }, (0, import_react20.createElement)("span", { className: "bt-bs-label" }, t("Model")), (0, import_react20.createElement)("span", { className: "bt-set-hint" }, modelHint(bot, roster))),
         (0, import_react20.createElement)(ModelMenu, { bot, roster, actions, run })
+      ),
+      (0, import_react20.createElement)(
+        "div",
+        { className: "bt-set-row bt-bs-row" },
+        (0, import_react20.createElement)("span", { className: "bt-set-copy" }, (0, import_react20.createElement)("span", { className: "bt-bs-label" }, t("Image model")), (0, import_react20.createElement)("span", { className: "bt-set-hint" }, t("Reads images when the Bot cannot. Default: the model it runs on."))),
+        (0, import_react20.createElement)(ImageModelMenu, { bot, roster, actions, run })
       )
     ),
     (0, import_react20.createElement)(
@@ -13000,28 +13092,90 @@ function PermissionRow({ bot, roster, actions, run }) {
     (0, import_react34.createElement)(PermissionPicker, { catalog, saved: bot.permission ?? catalog.defaultPreset, repick: bot.permission === void 0, onPick: (permission) => run(actions.updateBot(bot.id, { permission })) })
   );
 }
+function GemLoginCards({ bot, actions }) {
+  const [items, setItems] = (0, import_react34.useState)(null);
+  const [shots, setShots] = (0, import_react34.useState)({});
+  (0, import_react34.useEffect)(() => {
+    if (typeof actions.gemLoginList !== "function") return void 0;
+    let dead = false;
+    const pull = async () => {
+      const list = await actions.gemLoginList(bot.id);
+      if (dead || !Array.isArray(list)) return;
+      setItems(list);
+      await Promise.all(list.map(async (item) => {
+        const shot = await actions.gemLoginShot(bot.id, item.profileId);
+        if (!dead && shot?.image) setShots((last) => ({ ...last, [item.profileId]: shot }));
+      }));
+    };
+    void pull();
+    const timer = setInterval(pull, 2e3);
+    return () => {
+      dead = true;
+      clearInterval(timer);
+    };
+  }, [bot.id, actions]);
+  if (!items?.length) return null;
+  return (0, import_react34.createElement)(
+    "div",
+    { className: "bt-gem" },
+    (0, import_react34.createElement)("div", { className: "bt-section-title" }, t("GemLogin browser")),
+    items.map((item, index) => (0, import_react34.createElement)(
+      "div",
+      { key: item.profileId, className: "bt-bcard", style: { animationDelay: `${index * 30}ms` } },
+      (0, import_react34.createElement)(
+        "div",
+        { className: "bt-bcard-shot bt-gem-shot", style: shots[item.profileId]?.width ? { aspectRatio: `${shots[item.profileId].width}/${shots[item.profileId].height}` } : void 0 },
+        shots[item.profileId] ? (0, import_react34.createElement)("img", {
+          src: shots[item.profileId].image,
+          alt: "",
+          draggable: false,
+          title: t("Click to interact"),
+          onClick: (event) => {
+            const box = event.currentTarget.getBoundingClientRect();
+            if (box.width > 0 && box.height > 0) void actions.gemLoginClick(bot.id, item.profileId, (event.clientX - box.left) / box.width, (event.clientY - box.top) / box.height);
+          }
+        }) : (0, import_react34.createElement)("span", { className: "bt-bcard-blank" }, (0, import_react34.createElement)(GlobeIcon), (0, import_react34.createElement)("span", null, item.name))
+      ),
+      (0, import_react34.createElement)(
+        "div",
+        { className: "bt-bcard-row" },
+        (0, import_react34.createElement)("span", { className: "bt-bcard-title" }, `${item.name}${item.title || item.url ? ` · ${item.title || item.url}` : ""}`),
+        item.hidden ? (0, import_react34.createElement)("span", { className: "bt-gem-badge" }, t("hidden")) : null,
+        (0, import_react34.createElement)(
+          "button",
+          { type: "button", className: "bt-gem-toggle", onClick: () => {
+            void actions.gemLoginShow(bot.id, item.profileId, item.hidden);
+          } },
+          item.hidden ? t("Show window") : t("Hide window")
+        )
+      )
+    ))
+  );
+}
 function BrowserCards({ bot, sessionId, roster, actions, useBrowserTabs, useBrowserPages }) {
   const state = useBrowserTabs((map) => map[bot.id] ?? EMPTY_TABS);
   const pages = useBrowserPages((map) => map);
   (0, import_react34.useEffect)(() => {
     actions.browserEnsure?.(bot.id);
   }, [bot.id]);
+  const gem = (0, import_react34.createElement)(GemLoginCards, { bot, actions });
   if (roster.browser !== true || !actions.browserShow) {
-    return (0, import_react34.createElement)("div", { className: "bt-muted" }, t("The browser is in the DSH Desktop app."));
+    return (0, import_react34.createElement)("div", { className: "bt-bcards" }, gem, (0, import_react34.createElement)("div", { className: "bt-muted" }, t("The browser is in the DSH Desktop app.")));
   }
   if (state.ids.length === 0) {
-    return (0, import_react34.createElement)(
+    return (0, import_react34.createElement)("div", { className: "bt-bcards" }, gem, (0, import_react34.createElement)(
       "div",
       { className: "bt-browser-empty-mark" },
       (0, import_react34.createElement)(BotMark, { bot, size: 40, state: "idle", live: true }),
       (0, import_react34.createElement)("div", { className: "bt-browser-empty-title" }, t("{name}'s browser", { name: bot.name })),
       (0, import_react34.createElement)("div", { className: "bt-muted" }, t("Open a page here and {name} can read it with you. Logins and cookies stay with {name}; other Bots never see them.", { name: bot.name })),
       (0, import_react34.createElement)("button", { type: "button", className: "bt-browser-retry", onClick: () => actions.openBrowser(sessionId) }, t("Open browser"))
-    );
+    ));
   }
   return (0, import_react34.createElement)(
     "div",
     { className: "bt-bcards" },
+    gem,
     state.ids.map((tabId, index) => {
       const page = pages[tabId] ?? {};
       const label = page.title || shortUrl(page.url) || t("New tab");
@@ -13276,6 +13430,12 @@ function DetailsDrawer({ sessionId, startRenaming, startTab, hasStrip, roster, a
           (0, import_react34.createElement)("div", { className: "bt-section-title" }, t("Model")),
           (0, import_react34.createElement)(ModelMenu, { bot, roster, actions, run, wide: true }),
           modelOf(bot, roster) ? null : (0, import_react34.createElement)("div", { className: "bt-note" }, t("Pick a model and {name} can start.", { name: bot.name }))
+        ),
+        (0, import_react34.createElement)(
+          "div",
+          { key: "image-model", className: "bt-drawer-model" },
+          (0, import_react34.createElement)("div", { className: "bt-section-title" }, t("Image model")),
+          (0, import_react34.createElement)(ImageModelMenu, { bot, roster, actions, run, wide: true })
         ),
         (0, import_react34.createElement)(PermissionRow, { key: "permission", bot, roster, actions, run }),
         (0, import_react34.createElement)(
@@ -13931,6 +14091,12 @@ var BROWSER_CSS = `
 .bt-bcard-new{display:flex;align-items:center;justify-content:center;gap:6px;height:40px;border:.5px dashed var(--bt-line-2);border-radius:12px;background:none;color:var(--bt-ink-3);font:inherit;font-size:12.5px;cursor:pointer}
 .bt-bcard-new:hover{color:var(--bt-ink);border-color:var(--bt-ink-3)}
 .bt-bcard-new svg{width:14px;height:14px}
+.bt-gem{display:flex;flex-direction:column;gap:12px}
+.bt-gem-shot{cursor:crosshair}
+.bt-gem-shot img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top;user-select:none}
+.bt-gem-badge{flex:none;font-size:10.5px;line-height:15px;padding:1px 6px;border-radius:5px;background:var(--bt-hover);color:var(--bt-ink-3)}
+.bt-gem-toggle{flex:none;border:.5px solid var(--bt-line-2);border-radius:7px;background:none;color:var(--bt-ink-2);font:inherit;font-size:11.5px;line-height:16px;padding:3px 8px;cursor:pointer}
+.bt-gem-toggle:hover{color:var(--bt-ink);border-color:var(--bt-ink-3)}
 .bt-browser-empty-mark{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center}
 @media (prefers-reduced-motion:reduce){.bt-ptabs,.bt-panel-view,.bt-bcard,.bt-ptab-name{animation:none}}
 `;
@@ -15569,6 +15735,13 @@ function apply(ctx) {
     secretUpdate: (name, scope) => after(call("secret-update", { name, scope })),
     secretDelete: (name) => after(call("secret-delete", { name })),
     pairMint: () => after(call("pair-mint")),
+    gemLoginList: (bot) => call("gemlogin-list", { bot }).catch((error) => {
+      console.warn("[ds-bot] gemlogin list", error);
+      return [];
+    }),
+    gemLoginShot: (bot, profile) => call("gemlogin-shot", { bot, profile }).catch(() => ({ image: null })),
+    gemLoginShow: (bot, profile, show) => call("gemlogin-show", { bot, profile, show }).catch(() => ({ ok: false })),
+    gemLoginClick: (bot, profile, fx, fy) => call("gemlogin-click", { bot, profile, fx, fy }).catch(() => ({ ok: false })),
     connectorConnect: (id, token) => after(call("connector-connect", { id, token })),
     connectorDisconnect: (id) => after(call("connector-disconnect", { id })),
     connectorRetry: (id) => after(call("connector-retry", { id })),

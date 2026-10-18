@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { createRuntime } from '../index.js'
-import { fakeContext } from './fake-ctx.js'
+import { fakeAttachments, fakeContext } from './fake-ctx.js'
 
 // A fake Zalo library stands in for zca-js: QR login finishes at once, the saved
 // credentials log back in, and listener events are played by hand. No account,
@@ -67,7 +67,7 @@ function start({ lib } = {}) {
   const zalo = fakeZalo()
   const home = mkdtempSync(join(tmpdir(), 'ds-bot-zalo-'))
   writeFileSync(join(home, 'state.json'), JSON.stringify(TEAM))
-  const ctx = fakeContext()
+  const ctx = fakeContext({ services: { attachments: fakeAttachments() } })
   const delivered = []
   Object.assign(ctx, {
     llm: { listProviders: () => [], listModels: async () => [], resolveModelInfo: async () => ({}) },
@@ -234,6 +234,48 @@ test('self messages and unconfigured threads are ignored', async (t) => {
   assert.equal(api.sent.length, 0)
 })
 
+const photo = (threadId, content) => ({
+  threadId, isSelf: false,
+  data: { uidFrom: threadId, dName: 'Minh', msgType: 'chat.photo', msgId: 'p1', ts: 1, content },
+})
+
+test('a photo message downloads its image and arrives as an image block with the caption', async (t) => {
+  const { call, emit, delivered, api, stop } = start()
+  t.after(stop)
+  const realFetch = globalThis.fetch
+  globalThis.fetch = async () => new Response(new Uint8Array([0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3]), { headers: { 'content-length': '7' } })
+  t.after(() => { globalThis.fetch = realFetch })
+  await linked(call, api)
+  await call('zalo-thread-mode', { botId: 'm1', threadId: 'u-minh', kind: 'user', name: 'Minh', mode: 'talk' })
+
+  api.emit(photo('u-minh', { title: 'look at this', href: 'https://img.example/p.jpg', thumb: 'https://img.example/t.jpg' }))
+  const message = await waitFor(() => delivered.find(entry => entry.sessionId === 'm1'))
+  assert.ok(message !== undefined, 'nothing delivered to the Bot')
+  assert.match(message.message.content[0].text, /look at this$/)
+  const block = message.message.content.find(item => item.type === 'image')
+  assert.ok(block?.attachment?.attachmentId !== undefined, 'no image attachment delivered')
+
+  await answer(emit, 'm1', message.message.source, 'got the photo')
+  const sent = await waitFor(() => api.sent.find(entry => entry.threadId === 'u-minh'))
+  assert.ok(sent !== undefined, 'no reply reached Zalo')
+})
+
+test('a photo whose download fails still arrives, as the [image] placeholder', async (t) => {
+  const { call, delivered, api, stop } = start()
+  t.after(stop)
+  const realFetch = globalThis.fetch
+  globalThis.fetch = async () => { throw new Error('no network') }
+  t.after(() => { globalThis.fetch = realFetch })
+  await linked(call, api)
+  await call('zalo-thread-mode', { botId: 'm1', threadId: 'u-minh', kind: 'user', name: 'Minh', mode: 'talk' })
+
+  api.emit(photo('u-minh', { href: 'https://img.example/p.jpg' }))
+  const message = await waitFor(() => delivered.find(entry => entry.sessionId === 'm1'))
+  assert.ok(message !== undefined, 'nothing delivered to the Bot')
+  assert.match(message.message.content[0].text, /\[image\]$/)
+  assert.equal(message.message.content.some(item => item.type === 'image'), false)
+})
+
 test('zalo tools: threads list, read the buffer, send only to configured threads', async (t) => {
   const { call, ctx, api, stop } = start()
   t.after(stop)
@@ -248,7 +290,7 @@ test('zalo tools: threads list, read the buffer, send only to configured threads
   assert.match(threads, /watch/)
 
   const read = await ctx.registeredTools.get('zalo_read').execute({ thread: 'Team Chat' }, exec)
-  assert.match(read, /first line/)
+  assert.match(read.text, /first line/)
 
   const sent = await ctx.registeredTools.get('zalo_send').execute({ thread: 'Team Chat', text: 'hello group' }, exec)
   assert.match(sent, /Sent/)
