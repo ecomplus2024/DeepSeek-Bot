@@ -282,6 +282,11 @@ export function install(rt) {
       res.end(PIN_FORM(gate.pin !== null && gate.expiresAt > Date.now(), error, next))
     }
     const safeNext = url => (typeof url === 'string' && url.startsWith('/') && !url.startsWith('//') ? url : './')
+    // The manifest link fetch, the SW script fetch and icon loads all go out
+    // WITHOUT cookies in Chrome, so a gated install can never pass. These files
+    // are public by design, so they pass the gate like a local request does.
+    const publicAsset = pathname =>
+      pathname === '/sw.js' || pathname === '/ds-bot/manifest.webmanifest' || pathname.startsWith('/ds-bot/icons/')
     const server = createServer((req, res) => {
       const url = new URL(req.url ?? '/', 'http://x')
       if (url.pathname === '/pair' && req.method === 'POST') {
@@ -304,7 +309,7 @@ export function install(rt) {
         })
         return
       }
-      if (!local(req) && !authed(req)) {
+      if (!local(req) && !authed(req) && !publicAsset(url.pathname)) {
         // The form keeps the original URL in `next`, so a shared ?token= link
         // lands on the real dsh auth right after pairing.
         if (req.method === 'GET' || req.method === 'HEAD') form(res, 401, undefined, safeNext(req.url))
