@@ -18,8 +18,11 @@ const MANIFEST = {
   name: 'DS Bot',
   short_name: 'DS Bot',
   description: 'A team of long-lived Bots on DeepSeek Harness',
-  start_url: './',
-  scope: './',
+  // start_url/scope resolve against the manifest URL (/ds-bot/), so they must
+  // be absolute — a relative one would point the installed app at a 404.
+  id: '/',
+  start_url: '/',
+  scope: '/',
   display: 'standalone',
   orientation: 'portrait',
   theme_color: THEME,
