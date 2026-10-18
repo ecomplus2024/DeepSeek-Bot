@@ -509,6 +509,22 @@ button.bt-set-row:hover{background:var(--bt-hover)}
 .bt-connector-link{flex:1;font-size:12px;color:var(--bt-ink-2)}
 .bt-connector-error{padding-left:48px;font-size:12px;line-height:16px;color:var(--bt-danger)}
 
+/* Settings → Connectors → Zalo. */
+.bt-select.bt-zalo-bot{width:150px;height:30px}
+.bt-zalo-qr-box{display:flex;flex-direction:column;gap:8px;padding-left:48px;animation:bt-q-in ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing},bt-veil-in .2s ease-out}
+.bt-zalo-qr{width:180px;height:180px;box-sizing:border-box;border-radius:10px;border:.5px solid var(--bt-line);background:#fff;padding:8px}
+.bt-zalo-threads{display:flex;flex-direction:column;gap:10px;padding-left:48px}
+.bt-zalo-thread-group{display:flex;flex-direction:column;gap:6px}
+.bt-zalo-thread-title{font-size:11px;line-height:14px;letter-spacing:.04em;text-transform:uppercase;color:var(--bt-ink-3)}
+.bt-zalo-thread{display:flex;align-items:center;gap:8px;min-width:0}
+.bt-zalo-thread-name{flex:1;min-width:0;display:flex;align-items:baseline;gap:6px;font-size:13px;overflow:hidden}
+.bt-zalo-thread-name>*:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bt-zalo-kind{flex:none;font-size:11px;color:var(--bt-ink-3)}
+.bt-zalo-thread .bt-zalo-mode{flex:none;width:86px;height:30px}
+.bt-zalo-keys{flex:2;min-width:0;height:30px}
+.bt-zalo-search{height:32px;position:sticky;top:0;z-index:1}
+.bt-zalo-more{align-self:center;margin-top:2px}
+
 /* Shell chrome reshaped for the team view. Selectors use stable data attributes where the
    shell offers them and CSS-module name suffixes elsewhere. */
 [class*="_newSession"],nav[class*="_panelList"],[class*="_logoRow"]>[class*="_brand"],[class*="_logoRow"]:not(:has([class*="_toggle"])){display:none!important}
@@ -898,7 +914,7 @@ header[class*="_header"] .bt-head{flex:1 1 auto;width:100%}
 [data-composer-card]{display:flex!important;flex-direction:row!important;flex-wrap:wrap!important;align-items:center!important;gap:0!important;min-height:44px!important;border-radius:22px!important;padding:7.5px!important;box-sizing:border-box;background:var(--bt-main)!important;border:.5px solid var(--bt-line-2)!important;box-shadow:0 2px 8px -1px rgba(0,0,0,.05),0 1px 2px rgba(0,0,0,.03),0 0 0 1px rgba(228,228,228,.04)!important;transition:border-color .15s ease,background-color .15s ease,${spring(SPRING_SHAPE, 'border-radius')}!important}
 [data-composer-card]:hover,[data-composer-card]:focus-within{border-color:color-mix(in srgb,var(--bt-ink) 30%,transparent)!important}
 [data-composer-card]:has(> [data-slot="conversation.input.attachments"] *),[data-composer-card]:has([data-composer-input] br + *),[data-composer-card]:has([data-composer-input] > :nth-child(2)){border-radius:18px!important}
-[class*="_root"]:has(> [data-composer-card]){padding:0 11px 13px 16px!important}
+[class*="_root"]:has(> [data-composer-card]){padding:0 11px max(13px,env(safe-area-inset-bottom)) 16px!important}
 [class*="_root"]:has(> [data-composer-card])>[data-composer-card]{max-width:min(992px,100%)!important}
 [data-composer-card]>[class*="_row"]{display:contents!important}
 [data-composer-card] [class*="_tools"]{order:1!important;flex:none!important;align-self:flex-end!important;margin:0!important}
@@ -1002,6 +1018,67 @@ div:has(> nav [class*="_marks"]){display:none!important}
 .bt-earlier .bt-event{margin:4px 0}
 .bt-part-line{display:flex;align-items:center;gap:10px;margin:10px 0 6px;font-size:11px;line-height:14px;color:var(--bt-ink-3)}
 .bt-part-line::before,.bt-part-line::after{content:"";flex:1;height:1px;background:var(--bt-line)}
+`
+
+// Phone-width layout, sharing the 768px breakpoint with the JS branches in
+// mobile.js: the sidebar becomes a drawer over the conversation, overlays go
+// fullscreen, and menus become bottom sheets. Installed last so it wins ties.
+export const MOBILE_CSS = `
+@media (max-width:768px){
+[class*="_frame"]:has(> [class*="_sidebarCol"]){grid-template-columns:0 minmax(0,1fr) minmax(0,0)!important;transition:none!important}
+[class*="_frame"]>[class*="_sidebarCol"]{position:absolute;left:0;top:0;bottom:0;z-index:46;width:min(320px,88vw);box-sizing:border-box;background:var(--bt-sidebar);border-right:.5px solid var(--bt-line-2);box-shadow:12px 0 40px rgba(0,0,0,.18);transform:translateX(-103%);transition:transform .24s cubic-bezier(.32,.72,.35,1)}
+[class*="_frame"]:not([data-sidebar-collapsed])>[class*="_sidebarCol"]{transform:none}
+[class*="_frame"]:has(> [class*="_sidebarCol"]):not([data-sidebar-collapsed])::after{content:"";position:fixed;inset:0;z-index:45;background:rgba(0,0,0,.32);animation:bt-fade .2s ease-out}
+body[data-ds-dark-theme] [class*="_frame"]:has(> [class*="_sidebarCol"]):not([data-sidebar-collapsed])::after{background:rgba(0,0,0,.5)}
+[class*="_frame"]>[class*="_handle"],[class*="_widthHandle"]{display:none!important}
+.bt-head-menu{width:32px;height:32px;border-radius:8px;pointer-events:auto}
+.bt-head-menu:hover{background:color-mix(in srgb,var(--bt-main),#777 12%);color:var(--bt-ink)}
+.bt-pane{left:0!important}
+.bt-panel{left:0;width:100vw;border-left:0}
+.bt-panel[data-settling]>.bt-ptabs,.bt-panel[data-settling]>.bt-panel-view{width:100vw}
+.bt-panel-grip,.bt-drag-shield{display:none}
+[class*="_centerCol"]{grid-column:2;min-width:0;margin-right:0!important}
+[class*="_rightbarCol"]{grid-column:3;min-width:0;overflow:visible}
+[class*="_scroll"]:has(> [class*="_column"]){padding:44px 6px 12px 8px!important}
+.bt-msg{max-width:min(88%,560px)}
+.bt-astack[data-lead]>.bt-msg{max-width:min(calc(88% + 6px),560px)}
+.bt-settings{--bt-set-w:100vw;width:100vw;height:100%;border-radius:0;border:0;flex-direction:column}
+.bt-settings-nav{width:auto;flex-direction:row;overflow-x:auto;border-right:0;border-bottom:.5px solid var(--bt-line);padding:8px 10px;scrollbar-width:none}
+.bt-settings-nav::-webkit-scrollbar{display:none}
+.bt-settings-nav>.bt-thumb{display:none}
+.bt-settings-item{flex:none}
+.bt-settings-shell{margin:0 0 0 auto}
+.bt-settings-usage[data-off]{left:0;width:100%}
+.bt-settings-main{width:auto;height:auto;flex:1;min-height:0}
+.bt-settings-scroll{padding-bottom:calc(24px + env(safe-area-inset-bottom))}
+.bt-mem{width:100vw;height:100%;border-radius:0;border:0}
+.bt-mem-foot{padding-bottom:calc(12px + env(safe-area-inset-bottom))}
+.bt-nc-compose{padding-bottom:calc(14px + env(safe-area-inset-bottom))}
+.bt-voice-bar{padding-bottom:calc(32px + env(safe-area-inset-bottom))}
+.bt-drawer-body{padding-bottom:calc(16px + env(safe-area-inset-bottom))}
+.bt-dialog-foot{padding-bottom:calc(16px + env(safe-area-inset-bottom))}
+.bt-drop{left:8px;right:8px;width:auto}
+.bt-avedit{width:min(300px,calc(100vw - 24px))}
+.bt-us-stats{grid-template-columns:1fr 1fr}
+.bt-palette{width:100vw;left:0;top:0;transform:none;border-radius:0 0 16px 16px;border-left:0;border-right:0;border-top:0;max-height:70dvh}
+.bt-palette-list{height:min(402px,50dvh)}
+.bt-menu.bt-sheet{left:0!important;right:0;top:auto!important;bottom:0!important;transform:none;--bt-origin:bottom center;border-radius:16px 16px 0 0;border-left:0;border-right:0;border-bottom:0;min-width:0;width:auto;max-height:min(60vh,420px);max-height:min(60dvh,420px);overflow-y:auto;padding:8px 8px calc(8px + env(safe-area-inset-bottom))}
+.bt-menu.bt-sheet button{min-height:40px}
+.bt-react-strip.bt-sheet{left:0;right:0;top:auto;bottom:0;transform:none;border-radius:16px 16px 0 0;border-left:0;border-right:0;border-bottom:0;justify-content:center;padding:8px 8px calc(8px + env(safe-area-inset-bottom))}
+.bt-input,.bt-input-area,.bt-q-input,.bt-mem-input,.bt-select,.bt-to input,.bt-palette-head input,.bt-browser-address input,.bt-drawer-name-input,.bt-nc-card textarea,.bt-folder-input,[data-composer-card] [data-composer-input]{font-size:16px!important}
+}
+/* Touch has no hover: the message toolbar sits under the bubble and controls
+   hidden behind a hover stay tappable. */
+@media (hover:none){
+.bt-msg-line{flex-wrap:wrap}
+.bt-tools{position:static;transform:none;opacity:1;visibility:visible;order:3;flex-basis:100%;margin:2px 0 0;transition:none}
+.bt-tools::after{display:none}
+.bt-astack[data-lead] .bt-tools{margin-left:30px}
+.bt-tool{width:32px;height:32px}
+[data-chat-flow-kind=user] [class*="_actions"]{opacity:1!important;visibility:visible!important}
+.bt-utools{opacity:1;visibility:visible}
+.bt-ptab[aria-selected=true] .bt-ptab-x,.bt-bcard-x{opacity:1}
+}
 `
 
 // -------------------------------------------------------------------------

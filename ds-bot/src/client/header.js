@@ -1,14 +1,22 @@
 import { createElement as h, Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { currentPart, latestMemoryChange } from './text.js'
-import { ArrowUpIcon, CloseIcon, ArrowDownIcon, MemoryIcon, SidePanelIcon } from './icons.js'
+import { ArrowUpIcon, CloseIcon, ArrowDownIcon, MemoryIcon, SidePanelIcon, SidebarIcon } from './icons.js'
 import { botState, BotAvatar, RoomAvatar } from './mark.js'
 import { ActivityIndicator } from './activity-row.js'
 import { clockLabel, openingTurn, unseenSince } from './cells.js'
+import { usePhone, viewportHeight } from './mobile.js'
 import { t } from './i18n.js'
 
 // -------------------------------------------------------------------------
 // Conversation header
+
+// The drawer's way in, rendered by the conversation.header.leading slot. It
+// exists only at phone width, where the sidebar leaves the grid.
+export function DrawerButton({ actions }) {
+  const phone = usePhone()
+  return phone ? h('button', { type: 'button', className: 'bt-icon-btn bt-head-menu', 'aria-label': t('Menu'), title: t('Menu'), onClick: () => actions.toggleSidebar() }, h(SidebarIcon)) : null
+}
 
 // The pill's tail: a → that springs in on hover, flipping to ← while details are open.
 const GoArrow = () => h('svg', { width: 14, height: 14, viewBox: '-12 -12 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2.2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true }, h('path', { d: 'M-7 0H7M2 -5L7 0L2 5' }))
@@ -142,7 +150,7 @@ function useTranscriptView() {
         divider,
         center: Math.round(box.left + box.width / 2),
         top: Math.round(headerBottom + 8),
-        bottom: Math.round(window.innerHeight - box.bottom + composer + 8),
+        bottom: Math.round(viewportHeight() - box.bottom + composer + 8),
       }
       setView(prev => (prev && Object.keys(next).every(key => prev[key] === next[key]) ? prev : next))
     }

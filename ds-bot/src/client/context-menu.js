@@ -3,9 +3,11 @@ import { isMainOf } from './sources.js'
 import { currentPart } from './text.js'
 import { GearIcon, PinIcon, UnreadIcon, PencilIcon, StarLineIcon, CopyIcon, HideIcon, TrashIcon, DuplicateIcon } from './icons.js'
 import { useEscape } from './overlay-hooks.js'
+import { usePhone, viewportHeight } from './mobile.js'
 import { t } from './i18n.js'
 
 export function ContextMenu({ menu, roster, actions, leaving = false }) {
+  const phone = usePhone()
   useEscape(() => actions.closeMenu())
   useEffect(() => {
     const onDown = (event) => { if (!(event.target instanceof Element) || !event.target.closest('.bt-menu')) actions.closeMenu() }
@@ -16,9 +18,9 @@ export function ContextMenu({ menu, roster, actions, leaving = false }) {
   const [place, setPlace] = useState({ left: menu.x, top: menu.y })
   useLayoutEffect(() => {
     const box = ref.current?.getBoundingClientRect()
-    if (!box) return
-    setPlace({ left: Math.max(8, Math.min(menu.x, window.innerWidth - box.width - 8)), top: Math.max(8, Math.min(menu.y, window.innerHeight - box.height - 8)) })
-  }, [menu.x, menu.y])
+    if (!box || phone) return
+    setPlace({ left: Math.max(8, Math.min(menu.x, window.innerWidth - box.width - 8)), top: Math.max(8, Math.min(menu.y, viewportHeight() - box.height - 8)) })
+  }, [menu.x, menu.y, phone])
   if (menu.kind === 'agent' || menu.kind === 'agent-session') return h(AgentMenu, { menu, roster, actions, leaving })
   const bot = roster.byId[menu.id]
   const room = roster.roomsById[menu.id]
@@ -47,7 +49,7 @@ export function ContextMenu({ menu, roster, actions, leaving = false }) {
       isMainBot ? null : [room ? t('Delete group') : t('Delete'), TrashIcon, () => (bot ? actions.deleteBot(bot.id) : actions.deleteRoom(menu.id)), true],
     ],
   ].map(group => group.filter(Boolean)).filter(group => group.length > 0)
-  return h('div', { ref, className: 'bt-menu', role: 'menu', 'aria-label': t('{name} actions', { name: bot?.name ?? room.name }), style: place, 'data-leaving': leaving || undefined },
+  return h('div', { ref, className: `bt-menu${phone ? ' bt-sheet' : ''}`, role: 'menu', 'aria-label': t('{name} actions', { name: bot?.name ?? room.name }), style: phone ? undefined : place, 'data-leaving': leaving || undefined },
     groups.map((group, index) => h(Fragment, { key: index },
       index > 0 ? h('div', { className: 'bt-menu-sep', role: 'separator' }) : null,
       group.map(([label, Icon, run, danger]) => h('button', {
@@ -58,13 +60,14 @@ export function ContextMenu({ menu, roster, actions, leaving = false }) {
 
 // Menus for the DSH Agent row and its Sessions; none of the Bot entries apply.
 function AgentMenu({ menu, roster, actions, leaving }) {
+  const phone = usePhone()
   const ref = useRef(null)
   const [place, setPlace] = useState({ left: menu.x, top: menu.y })
   useLayoutEffect(() => {
     const box = ref.current?.getBoundingClientRect()
-    if (!box) return
-    setPlace({ left: Math.max(8, Math.min(menu.x, window.innerWidth - box.width - 8)), top: Math.max(8, Math.min(menu.y, window.innerHeight - box.height - 8)) })
-  }, [menu.x, menu.y])
+    if (!box || phone) return
+    setPlace({ left: Math.max(8, Math.min(menu.x, window.innerWidth - box.width - 8)), top: Math.max(8, Math.min(menu.y, viewportHeight() - box.height - 8)) })
+  }, [menu.x, menu.y, phone])
   const agent = roster.agentsById[menu.kind === 'agent' ? menu.id : menu.agentId]
   if (agent === undefined) return null
   const groups = menu.kind === 'agent'
@@ -84,7 +87,7 @@ function AgentMenu({ menu, roster, actions, leaving }) {
           [t('Archive'), TrashIcon, () => actions.archiveAgentSession(agent.id, menu.id), true],
         ],
       ]
-  return h('div', { ref, className: 'bt-menu', role: 'menu', 'aria-label': menu.kind === 'agent' ? 'DSH Agent' : t('Session actions'), style: place, 'data-leaving': leaving || undefined },
+  return h('div', { ref, className: `bt-menu${phone ? ' bt-sheet' : ''}`, role: 'menu', 'aria-label': menu.kind === 'agent' ? 'DSH Agent' : t('Session actions'), style: phone ? undefined : place, 'data-leaving': leaving || undefined },
     groups.map((group, index) => h(Fragment, { key: index },
       index > 0 ? h('div', { className: 'bt-menu-sep', role: 'separator' }) : null,
       group.map(([label, Icon, run, danger]) => h('button', {

@@ -5,6 +5,7 @@ import { CheckIcon, SlidersIcon } from './icons.js'
 import { BotMark } from './mark.js'
 import { openHarnessOnboarding, openHarnessSettings } from './sidebar.js'
 import { SPRING_POP, SPRING_SHAPE, spring, useLinger } from './motion.js'
+import { usePhone, viewportHeight } from './mobile.js'
 import { t } from './i18n.js'
 
 const MENU_EXIT_MS = 120
@@ -101,6 +102,7 @@ export const Caret = () => h('svg', { className: 'bt-model-caret', width: 12, he
 // A menu that opens under its trigger, or above when the window has no room below. A
 // click outside, Escape, or a scroll outside it closes it.
 export function useAnchoredMenu() {
+  const sheet = usePhone()
   const [place, setPlace] = useState(null)
   const [shownPlace, leaving] = useLinger(place, MENU_EXIT_MS)
   const button = useRef(null)
@@ -127,19 +129,19 @@ export function useAnchoredMenu() {
     const rect = button.current.getBoundingClientRect()
     const width = Math.max(240, rect.width)
     const left = Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8))
-    const below = window.innerHeight - rect.bottom
+    const below = viewportHeight() - rect.bottom
     setPlace(below >= 260 || below >= rect.top
       ? { left, width, top: rect.bottom + 4, maxHeight: below - 16, '--bt-origin': 'top right' }
-      : { left, width, bottom: window.innerHeight - rect.top + 4, maxHeight: rect.top - 16, '--bt-origin': 'bottom right' })
+      : { left, width, bottom: viewportHeight() - rect.top + 4, maxHeight: rect.top - 16, '--bt-origin': 'bottom right' })
   }
-  return { isOpen: place !== null, shownPlace, leaving, button, menu, open, close }
+  return { isOpen: place !== null, shownPlace, leaving, button, menu, open, close, sheet }
 }
 
 // The trigger shows the model name over its provider. A Thinking section lists the
 // levels of the shown model when it has them.
 // `onPick`/`onPickEffort` replace saving to the Bot, for a Bot that does not exist yet.
 export function ModelMenu({ bot, roster, actions, run, wide = false, onPick, onPickEffort }) {
-  const { isOpen, shownPlace, leaving, button, menu, open, close } = useAnchoredMenu()
+  const { isOpen, shownPlace, leaving, button, menu, open, close, sheet } = useAnchoredMenu()
   const shown = modelOf(bot, roster)
   const current = bot.model ?? bot.appliedModel
   const served = servedOf(roster, current)
@@ -179,7 +181,7 @@ export function ModelMenu({ bot, roster, actions, run, wide = false, onPick, onP
         ? (effortLabel === undefined ? shown.provider : `${shown.provider} · ${effortLabel}`)
         : t('{provider} · not available', { provider: shown.provider })) : null),
     h(Caret)),
-    shownPlace ? createPortal(h('div', { ref: menu, className: `bt-menu bt-model-menu${shownPlace.bottom !== undefined ? ' bt-menu-up' : ''}`, role: 'menu', 'aria-label': t('Model for {name}', { name: bot.name }), style: shownPlace, 'data-leaving': leaving || undefined },
+    shownPlace ? createPortal(h('div', { ref: menu, className: `bt-menu bt-model-menu${sheet ? ' bt-sheet' : shownPlace.bottom !== undefined ? ' bt-menu-up' : ''}`, role: 'menu', 'aria-label': t('Model for {name}', { name: bot.name }), style: sheet ? undefined : shownPlace, 'data-leaving': leaving || undefined },
       models.length > 0 ? h(ModelRows, { roster, current, onPick: pick })
         : h('div', { className: 'bt-model-none' }, t('No models are set up in DeepSeek Harness yet.')),
       effortRows(reasoning).length > 0 ? h(EffortRows, { reasoning, current: picked, onPick: pickEffort }) : null,

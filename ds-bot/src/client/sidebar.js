@@ -9,6 +9,7 @@ import { botState, BotMark, BotAvatar, RoomAvatar } from './mark.js'
 import { reducedMotion } from './activity-row.js'
 import { Shimmer, workPhrase } from './cells.js'
 import { springEasing, SPRING_SHAPE } from './motion.js'
+import { usePhone, viewportHeight } from './mobile.js'
 import { hostText, t } from './i18n.js'
 import { showsDshRow } from './dsh-offer.js'
 
@@ -397,7 +398,7 @@ export function ConnectPlugins({ wide, actions }) {
       const rect = button.current?.getBoundingClientRect()
       if (!rect) return
       const left = Math.max(8, Math.min(rect.left, window.innerWidth - 268))
-      setBox({ left, bottom: window.innerHeight - rect.top + 10 })
+      setBox({ left, bottom: viewportHeight() - rect.top + 10 })
       setTip(true)
     }, 250)
   }
@@ -481,6 +482,7 @@ function pressSettingsShortcut() {
 // over a shell account plugin's own launcher (the Desktop's "··· More"), which comes
 // back in Agent mode; FooterAccount stands in while no seat exists at all.
 export function AccountLauncher({ seat = true, settingsOpen, openSettings, openOnboarding, actions }) {
+  const phone = usePhone()
   const [open, setOpen] = useState(false)
   useLayoutEffect(() => {
     if (!seat) return undefined
@@ -531,7 +533,7 @@ export function AccountLauncher({ seat = true, settingsOpen, openSettings, openO
   return h(Fragment, null,
     h('button', { ref: button, type: 'button', className: 'bt-account', 'aria-label': t('Account'), 'aria-haspopup': 'menu', 'aria-expanded': open, onClick: toggle },
       h('span', { className: 'bt-you', 'aria-hidden': true }, h(BotMark, { look: MAIN_LOOK, size: 24 }))),
-    open && box ? createPortal(h('div', { className: 'bt-menu bt-menu-up bt-account-menu', role: 'menu', 'aria-label': t('Account'), style: box },
+    open && box ? createPortal(h('div', { className: `bt-menu bt-menu-up bt-account-menu${phone ? ' bt-sheet' : ''}`, role: 'menu', 'aria-label': t('Account'), style: phone ? undefined : box },
       groups.map((group, index) => h(Fragment, { key: index },
         index > 0 ? h('div', { className: 'bt-menu-sep', role: 'separator' }) : null,
         group.map(([label, Icon, run, hint]) => h('button', {

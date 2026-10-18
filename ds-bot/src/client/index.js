@@ -4,10 +4,10 @@ import { DEFAULT_MASK, SHAPES, markupCache, maskOf } from './characters.js'
 import { countCards, createSource, EMPTY_ROSTER, indexRoster, isAgentSession } from './sources.js'
 import { themeCss, shellTokens, registry, registerShape, registerTheme, allThemes } from './themes.js'
 import { MENTION_ORIGIN, currentPart } from './text.js'
-import { SHELL_CSS, CONVERSATION_CSS, installStyles, installCompiledStyles } from './styles.js'
+import { SHELL_CSS, CONVERSATION_CSS, MOBILE_CSS, installStyles, installCompiledStyles } from './styles.js'
 import { lookOf } from './mark.js'
 import { TeamSidebar, ConnectPlugins, YouAvatar, AccountLauncher, FooterAccount, BrandMark, BrandName, BotReturn, SIDEBAR_CSS, RETURN_CSS, holdShellShortcuts } from './sidebar.js'
-import { HeaderPill } from './header.js'
+import { DrawerButton, HeaderPill } from './header.js'
 import { ComposerPlus, ComposerVoice, menuIcons } from './composer.js'
 import { CHATS_SOURCE, atSources } from './at-menu.js'
 import { VOICE_BUNDLE } from './speech.js'
@@ -34,6 +34,8 @@ import { ABOUT_CSS } from './about.js'
 import { MEMBER_CSS, MemberDock } from './member-status.js'
 import { USER_MESSAGE_CSS, UserMessageCell, canDrawUserMessages } from './user-message.js'
 import { noticeApprovals } from './approval-notices.js'
+import { isPhone, layoutFrame, drawerOpen } from './mobile.js'
+import { addEscapeLayer } from './overlay-hooks.js'
 
 export const inject = ['sessions', 'uiWorkspace', 'uiConversation', 'slots', 'theme', 'layout']
 
@@ -147,6 +149,7 @@ export function apply(ctx) {
     const live = {}
     if (value.connectors !== undefined && JSON.stringify(value.connectors) !== JSON.stringify(current.connectors ?? [])) live.connectors = value.connectors
     if (value.capabilityStatuses !== undefined && JSON.stringify(value.capabilityStatuses) !== JSON.stringify(current.capabilityStatuses ?? {})) live.capabilityStatuses = value.capabilityStatuses
+    if (value.zalo !== undefined && JSON.stringify(value.zalo) !== JSON.stringify(current.zalo ?? null)) live.zalo = value.zalo
     if (Object.keys(live).length > 0 && current.ready) roster.set({ ...current, ...live })
     if (value.unchanged || (value.revision === current.revision && value.modelsKey === current.modelsKey)) return
     // On a browser with no visit record yet, everything already there counts as seen.
@@ -339,6 +342,12 @@ export function apply(ctx) {
     for (const [id, owner] of pendingAdopt) if (owner === agentId && !ids.includes(id)) ids.push(id)
     return ids
   }
+  // On a phone the open sidebar is a drawer over the conversation; a
+  // navigation takes it down.
+  const closeDrawer = () => {
+    if (!isPhone()) return
+    if (drawerOpen()) ctx.layout.toggleSidebar()
+  }
   const actions = {
     // The full-pane overlays sit above the conversation, so opening one must dismiss them
     // or the click appears to do nothing.
@@ -348,6 +357,7 @@ export function apply(ctx) {
       if (isAgentSessionId(id)) return actions.openAgentSession(id)
       ui.set(state => (state.newChat || state.exchange || state.menu || state.palette ? { ...state, newChat: null, exchange: null, menu: null, palette: null } : state))
       setPlain(false)
+      closeDrawer()
       const target = partFor(id)
       expected = target
       ctx.uiWorkspace.openSession(target)
@@ -357,6 +367,7 @@ export function apply(ctx) {
     openAgentSession: (sessionId) => {
       ui.set(state => ({ ...state, newChat: null, exchange: null, menu: null, palette: null, details: null, view: 'details', renaming: false, tab: null }))
       setPlain(true)
+      closeDrawer()
       expected = sessionId
       ctx.uiWorkspace.openSession(sessionId)
     },
@@ -415,11 +426,12 @@ export function apply(ctx) {
       if (last) await pull().catch(() => {})
       const bot = last ? roster.getSnapshot().byId[last.botId] : undefined
       setPlain(false)
+      closeDrawer()
       const target = bot && currentPart(bot) !== last.sessionId ? currentPart(bot) : partFor(id)
       expected = target
       ctx.uiWorkspace.openSession(target)
     },
-    selectPanel: (id) => { ctx.layout.selectPanel(id) },
+    selectPanel: (id) => { closeDrawer(); ctx.layout.selectPanel(id) },
     toggleSidebar: () => { ctx.layout.toggleSidebar() },
     openNewChat: (mode) => { ui.set(state => ({ ...state, newChat: mode, menu: null, palette: null })) },
     openPalette: (query = '') => { ui.set(state => ({ ...state, palette: { query, token: Date.now() }, newChat: null, menu: null })) },
@@ -538,6 +550,12 @@ export function apply(ctx) {
     connectorConnect: (id, token) => after(call('connector-connect', { id, token })),
     connectorDisconnect: id => after(call('connector-disconnect', { id })),
     connectorRetry: id => after(call('connector-retry', { id })),
+    zaloStart: botId => after(call('zalo-start', { botId })),
+    zaloCancel: () => after(call('zalo-cancel')),
+    zaloLogout: botId => after(call('zalo-logout', { botId })),
+    zaloReconnect: botId => after(call('zalo-reconnect', { botId })),
+    zaloThreads: botId => call('zalo-threads', { botId }),
+    zaloThreadMode: (botId, thread) => after(call('zalo-thread-mode', { botId, ...thread })),
     saveCapability: capability => after(call('capability-save', capability)),
     deleteCapability: name => after(call('capability-delete', { name })),
     approveCapability: name => after(call('capability-approve', { name })),
@@ -697,6 +715,38 @@ export function apply(ctx) {
   const browserPages = browsers?.pages ?? createSource({})
   const browserTabs = browsers?.tabs ?? createSource({})
   const face = () => ({ actions, hooks: { roster, ui, activity, work, memoryNews, registry, turnClock, live, cards, browserPages, browserTabs, surface, update } })
+  // On a phone the open sidebar is a drawer over the chat; a tap on the scrim
+  // outside it closes it, and is swallowed so it cannot also hit what is under.
+  ctx.effect(() => {
+    const onDown = (event) => {
+      if (!isPhone() || !drawerOpen()) return
+      const column = layoutFrame()?.querySelector(':scope > [class*="_sidebarCol"]')
+      if (!column || column.contains(event.target)) return
+      event.preventDefault()
+      event.stopPropagation()
+      const swallow = (next) => { next.preventDefault(); next.stopPropagation() }
+      window.addEventListener('pointerup', swallow, { capture: true, once: true })
+      window.addEventListener('click', swallow, { capture: true, once: true })
+      actions.toggleSidebar()
+    }
+    window.addEventListener('pointerdown', onDown, true)
+    // Escape joins the overlay stack so it pops the drawer only when nothing newer
+    // (a menu, the details pane) is open above it.
+    let release = null
+    const syncEscape = () => {
+      const open = isPhone() && drawerOpen()
+      if (open && !release) release = addEscapeLayer(() => actions.toggleSidebar())
+      else if (!open && release) { release(); release = null }
+    }
+    const observer = new MutationObserver(syncEscape)
+    observer.observe(document.body, { subtree: true, attributeFilter: ['data-sidebar-collapsed'] })
+    syncEscape()
+    return () => {
+      window.removeEventListener('pointerdown', onDown, true)
+      observer.disconnect()
+      release?.()
+    }
+  }, 'ds-bot: drawer scrim')
   ctx.effect(() => noticeApprovals({
     work,
     roster,
@@ -773,7 +823,12 @@ export function apply(ctx) {
     () => installCompiledStyles(MEMBER_CSS, 'members'),
     () => installCompiledStyles(USER_MESSAGE_CSS, 'user-messages'),
     browsers ? () => installCompiledStyles(BROWSER_CSS, 'browser') : null,
+    // Last, so its phone-width rules win ties against the blocks above.
+    () => installCompiledStyles(MOBILE_CSS, 'mobile'),
     () => installTheme(),
+    // The drawer's way in on a phone. It sits in the shell group so a plain
+    // Session inside the Bot surface keeps it too.
+    () => shadow('conversation.header.leading', { priority: BOT_PRIORITY, inject: face }, DrawerButton),
     () => shadow('sidebar.workspaces', { priority: BOT_PRIORITY, inject: face }, TeamSidebar),
     () => shadow('sidebar.brand.mark', { priority: BOT_PRIORITY }, BrandMark),
     () => shadow('sidebar.brand.name', { priority: BOT_PRIORITY }, BrandName),

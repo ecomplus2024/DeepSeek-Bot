@@ -11,6 +11,7 @@ import { dateLocale, t } from './i18n.js'
 import { failureLabel } from './diagnostics.js'
 import { turnReasoning } from './turn-reasoning.js'
 import { FOLD_AT, FOLD_HUGE, stripLongNote, useFold } from './fold.js'
+import { usePhone, viewportHeight } from './mobile.js'
 
 // -------------------------------------------------------------------------
 // Chat cells
@@ -81,6 +82,7 @@ function MessageTools({ text, name, sessionId, react, actions }) {
   const [panel, setPanel] = useState(null)
   const [place, setPlace] = useState(null)
   const [copied, setCopied] = useState(false)
+  const phone = usePhone()
   const tools = useRef(null)
   const pop = useRef(null)
   const close = () => setPanel(null)
@@ -88,10 +90,10 @@ function MessageTools({ text, name, sessionId, react, actions }) {
   const open = (kind, event) => {
     if (panel === kind) { close(); return }
     const rect = event.currentTarget.getBoundingClientRect()
-    const below = rect.bottom + 220 < window.innerHeight
+    const below = rect.bottom + 220 < viewportHeight()
     setPlace(kind === 'react'
       ? { left: rect.left + rect.width / 2, top: rect.top - 6, '--bt-origin': 'bottom center' }
-      : { left: Math.min(rect.left, window.innerWidth - 208), ...(below ? { top: rect.bottom + 4 } : { bottom: window.innerHeight - rect.top + 4, '--bt-origin': 'bottom left' }) })
+      : { left: Math.min(rect.left, window.innerWidth - 208), ...(below ? { top: rect.bottom + 4 } : { bottom: viewportHeight() - rect.top + 4, '--bt-origin': 'bottom left' }) })
     setPanel(kind)
   }
   const copy = () => {
@@ -108,9 +110,9 @@ function MessageTools({ text, name, sessionId, react, actions }) {
     react ? h('button', { type: 'button', className: 'bt-tool', 'aria-label': t('Add reaction'), title: t('Add reaction'), 'aria-expanded': panel === 'react', onClick: event => open('react', event) }, h(SmileIcon)) : null,
     sessionId ? h('button', { type: 'button', className: 'bt-tool', 'aria-label': t('Reply'), title: t('Reply'), onClick: () => actions.quote(sessionId, text) }, h(ReplyIcon)) : null,
     h('button', { type: 'button', className: 'bt-tool', 'aria-label': t('More message actions'), title: t('More'), 'aria-haspopup': 'menu', 'aria-expanded': panel === 'more', onClick: event => open('more', event) }, copied ? h(CheckIcon) : h(DotsIcon)),
-    panel === 'react' ? createPortal(h('div', { ref: pop, className: 'bt-react-strip', role: 'menu', 'aria-label': t('Reactions'), style: place },
+    panel === 'react' ? createPortal(h('div', { ref: pop, className: `bt-react-strip${phone ? ' bt-sheet' : ''}`, role: 'menu', 'aria-label': t('Reactions'), style: phone ? undefined : place },
       REACTIONS.map(emoji => h('button', { key: emoji, type: 'button', role: 'menuitem', 'aria-label': emoji, onClick: () => { close(); react(emoji) } }, emoji))), document.body) : null,
-    panel === 'more' ? createPortal(h('div', { ref: pop, className: 'bt-menu', role: 'menu', 'aria-label': t('Message actions'), style: place },
+    panel === 'more' ? createPortal(h('div', { ref: pop, className: `bt-menu${phone ? ' bt-sheet' : ''}`, role: 'menu', 'aria-label': t('Message actions'), style: phone ? undefined : place },
       item(t('Copy'), CopyIcon, copy), item(t('Download'), DownloadIcon, download)), document.body) : null)
 }
 

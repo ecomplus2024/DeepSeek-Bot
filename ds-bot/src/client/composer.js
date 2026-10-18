@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom'
 import { ChatsIcon, ClockIcon, MicIcon, PaperclipIcon, PeopleIcon, PlusIcon, WaveIcon } from './icons.js'
 import { BotMark } from './mark.js'
 import { useLinger } from './motion.js'
-import { t } from './i18n.js'
+import { usePhone } from './mobile.js'
+import { dateLocale, t } from './i18n.js'
 
 // -------------------------------------------------------------------------
 // Composer: dictation mic and the voice-chat button. The shell's send
@@ -29,7 +30,7 @@ export function useDictation(onText) {
     const Api = speechApi()
     if (!Api) { setNote(t('Dictation is not available in this browser')); return false }
     const engine = new Api()
-    engine.lang = navigator.language || 'zh-CN'
+    engine.lang = navigator.language || dateLocale()
     engine.interimResults = true
     engine.continuous = continuous
     engine.onresult = (event) => {
@@ -108,6 +109,7 @@ export function menuIcons(roster) {
 // input beside it.
 export function ComposerPlus({ sessionId, inputActions, useRoster, actions }) {
   const roster = useRoster(value => value)
+  const phone = usePhone()
   const [open, setOpen] = useState(null)
   const [shown, leaving] = useLinger(open, 120)
   const button = useRef(null)
@@ -148,8 +150,8 @@ export function ComposerPlus({ sessionId, inputActions, useRoster, actions }) {
       'aria-haspopup': 'menu', 'aria-expanded': Boolean(open), onMouseDown: keepComposerFocus, onClick: toggle,
     }, h(PlusIcon)),
     shown ? createPortal(h('div', {
-      ref: menu, className: 'bt-menu bt-menu-up bt-plus-menu', role: 'menu', 'aria-label': t('Add'),
-      style: { left: shown.left, bottom: shown.bottom }, 'data-leaving': leaving || undefined,
+      ref: menu, className: `bt-menu bt-menu-up bt-plus-menu${phone ? ' bt-sheet' : ''}`, role: 'menu', 'aria-label': t('Add'),
+      style: phone ? undefined : { left: shown.left, bottom: shown.bottom }, 'data-leaving': leaving || undefined,
     },
     h('button', { type: 'button', role: 'menuitem', onClick: attach }, h(PaperclipIcon), h('span', { className: 'bt-menu-label' }, t('Add files'))),
     canReference ? h('button', { type: 'button', role: 'menuitem', onMouseDown: keepComposerFocus, onClick: reference }, h(ChatsIcon), h('span', { className: 'bt-menu-label' }, t('Reference a chat'))) : null,

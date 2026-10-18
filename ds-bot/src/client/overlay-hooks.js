@@ -7,6 +7,18 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 // not take the pane down with it.
 const escapeLayers = []
 const onEscapeKey = (event) => { if (event.key === 'Escape') escapeLayers.at(-1)?.current() }
+// The drawer is not a React layer, but Escape still has to close it in the right
+// order with any menu or pane that is open over it.
+export function addEscapeLayer(onClose) {
+  const ref = { current: onClose }
+  if (escapeLayers.length === 0) window.addEventListener('keydown', onEscapeKey)
+  escapeLayers.push(ref)
+  return () => {
+    const at = escapeLayers.indexOf(ref)
+    if (at >= 0) escapeLayers.splice(at, 1)
+    if (escapeLayers.length === 0) window.removeEventListener('keydown', onEscapeKey)
+  }
+}
 export function useEscape(onClose) {
   const ref = useRef(onClose)
   ref.current = onClose

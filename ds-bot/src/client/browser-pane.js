@@ -9,6 +9,7 @@ import { BotMark } from './mark.js'
 import { STORAGE } from './storage.js'
 import { SPRING_SHAPE, springEasing } from './motion.js'
 import { DetailsDrawer } from './details-drawer.js'
+import { usePhone } from './mobile.js'
 import { t } from './i18n.js'
 
 export const PANEL_LINGER_MS = 300
@@ -300,6 +301,8 @@ export function BotPanel({ pane, leaving, roster, actions, useSessions, useSessi
   const [resizing, setResizing] = useState(false)
   const instant = dragging || resizing
   const [reading, setReading] = useState(false)
+  // On a phone the panel covers the screen and the conversation keeps its width.
+  const phone = usePhone()
 
   const panelWidth = fitWidth(width ?? (view === 'browser' ? DEFAULT_WIDTH : DETAILS_WIDTH), widthRange(view, viewport))
   // Once the browser has shown, the Bot page keeps its width (up to DETAILS_MAX).
@@ -321,9 +324,9 @@ export function BotPanel({ pane, leaving, roster, actions, useSessions, useSessi
     const switched = settling && shownView.current !== view
     shownView.current = view
     if (switched) chatRoom.hold(true)
-    chatRoom.set(leaving ? null : panelWidth)
+    chatRoom.set(leaving || phone ? null : panelWidth)
     if (switched) chatRoom.hold(false)
-  }, [view, panelWidth, leaving])
+  }, [view, panelWidth, leaving, phone])
   useEffect(() => () => { chatRoom.set(null); chatRoom.hold(false) }, [])
   useEffect(() => {
     let timer
@@ -476,7 +479,7 @@ export function BotPanel({ pane, leaving, roster, actions, useSessions, useSessi
     'data-instant': instant || undefined, 'data-dragging': dragging || undefined, style: { '--bt-panel-w': `${panelWidth}px` },
     onAnimationEnd: (event) => { if (event.target === event.currentTarget) setLanded(true) },
   },
-    leaving ? null : h('div', { className: 'bt-panel-grip', role: 'separator', 'aria-orientation': 'vertical', 'aria-label': t('Resize panel'), onPointerDown: startResize }),
+    leaving || phone ? null : h('div', { className: 'bt-panel-grip', role: 'separator', 'aria-orientation': 'vertical', 'aria-label': t('Resize panel'), onPointerDown: startResize }),
     // Over the whole window while dragging: the cursor stays a resize cursor and the
     // pages underneath (the chat, the guest) see no pointer.
     dragging ? createPortal(h('div', { className: 'bt-drag-shield', 'aria-hidden': true }), document.body) : null,
