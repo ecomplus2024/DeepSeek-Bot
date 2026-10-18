@@ -23,6 +23,7 @@ import * as memory from './src/host/memory.js'
 import * as parts from './src/host/parts.js'
 import * as images from './src/host/images.js'
 import * as browser from './src/host/browser.js'
+import * as computer from './src/host/computer.js'
 import * as gemlogin from './src/host/gemlogin.js'
 import * as secrets from './src/host/secrets.js'
 import * as connectors from './src/host/connectors.js'
@@ -44,7 +45,7 @@ export const inject = ['llm', 'tools', 'systemPrompt', 'sessionController', 'ses
 // the functions other modules call; they call them through `rt` at run time, never during
 // install. Listeners run and tools are listed in registration order, so this order holds:
 // usage meters model requests after every listener that rewrites them.
-const MODULES = [diagnostics, store, models, permissions, turns, handoffs, delivery, roster, folders, agents, prompt, timeContext, tools, chatIndex, groups, approvals, resume, memory, parts, images, secrets, connectors, zalo, capabilities, schedules, gemlogin, browser, usage, update, dshUpdate, pwa, channel]
+const MODULES = [diagnostics, store, models, permissions, turns, handoffs, delivery, roster, folders, agents, prompt, timeContext, tools, chatIndex, groups, approvals, resume, memory, parts, images, secrets, connectors, zalo, capabilities, schedules, gemlogin, computer, browser, usage, update, dshUpdate, pwa, channel]
 
 export function apply(ctx, config = {}) {
   createRuntime(ctx, config)

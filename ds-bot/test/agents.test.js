@@ -202,8 +202,9 @@ test('a corrupt agents field resets instead of crashing the view', async (t) => 
 })
 
 test('TEAM_TOOLS names exactly the tools ds-bot registers', async (t) => {
-  // read_browser registers only in the Desktop profile; the flag stands in for it.
-  const { stop, ctx } = start(TEAM, { config: { browser: true } })
+  // read_browser and use_computer register only in the Desktop profile; the flags
+  // stand in for it.
+  const { stop, ctx } = start(TEAM, { config: { browser: true, computer: true } })
   t.after(stop)
   assert.deepEqual([...ctx.registeredTools.keys()].sort(), [...TEAM_TOOLS].sort())
 })

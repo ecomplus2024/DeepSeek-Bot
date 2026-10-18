@@ -46,3 +46,4 @@
 | [手机界面与 PWA](2026-10-18-mobile-pwa.md)（草案） | 窄屏布局（抽屉、全屏页、底部 sheet）、manifest 与 service worker、Web Push 等用户介入的事 |
 | [长消息](2026-10-16-long-messages.md) | state.json 只存开头；超过 2 万字的 Bot 消息转成 DSH 文件；成员和界面怎么读全文 |
 | [Bot 之间派活](2026-10-16-bot-handoffs.md) | Bot 看得到对方的状态；没读的消息合成一条；派活树：下面的活交回后才往上交，不许发给在等结果的 Bot；不设总量和链长上限 |
+| [电脑控制](2026-10-18-computer-control.md) | `use_computer`：真实鼠标键盘（SendInput/CGEvent/xdotool），截屏即坐标系，按名字定位走 TypeSafe Box+Noul，一次一个 Bot 驾驶 |

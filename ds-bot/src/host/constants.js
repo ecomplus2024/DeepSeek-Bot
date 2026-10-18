@@ -69,6 +69,7 @@ export const TEAM_TOOLS = [
   'list_capabilities', 'save_capability', 'delete_capability',
   'attach_capability', 'detach_capability',
   'gemlogin_profiles', 'gemlogin_open', 'gemlogin_close', 'gemlogin_browse',
+  'use_computer',
   'zalo_threads', 'zalo_read', 'zalo_send',
 ]
 
