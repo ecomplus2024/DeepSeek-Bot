@@ -115,7 +115,7 @@ button{width:100%;margin-top:14px;padding:12px;font-size:16px;border:0;border-ra
 <p>Enter the 6-digit PIN shown in DS Bot on the computer you are pairing with.</p>
 ${pinReady
   ? `<input type="hidden" name="next" value="${next}"><input name="pin" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="••••••" required autofocus><button type="submit">Pair</button>`
-  : '<p class="err">No PIN is being shown right now. Wait a moment and reload.</p>'}
+  : '<p class="err">No PIN yet. On the computer, open Settings → This device → Pair a device and generate one, then reload this page.</p>'}
 ${error ? `<p class="err">${error}</p>` : ''}
 </form></body></html>`
 
@@ -220,6 +220,7 @@ export function install(rt) {
     : gate.pin !== null && gate.expiresAt > Date.now()
       ? { enabled: true, port: gate.port, pin: `${gate.pin.slice(0, 3)} ${gate.pin.slice(3)}`, expiresAt: gate.expiresAt }
       : { enabled: true, port: gate.port, pin: null, cooldownUntil: gate.nextPinAt > Date.now() ? gate.nextPinAt : null })
+  rt.pairMint = () => { mintPin(); return rt.pairView() }
 
   const mintPin = () => {
     const now = Date.now()
@@ -271,9 +272,11 @@ export function install(rt) {
       try { return new URL(ctx.connection?.authenticatedUrl?.('http://gate.invalid/') ?? '').searchParams.get('token') }
       catch { return null }
     })()
+    // The form never mints: a PIN exists only after the owner asks for one in
+    // Settings, so the pairing window is always opened deliberately.
     const form = (res, status, error, next) => {
       res.writeHead(status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' })
-      res.end(PIN_FORM(mintPin() !== null, error, next))
+      res.end(PIN_FORM(gate.pin !== null && gate.expiresAt > Date.now(), error, next))
     }
     const safeNext = url => (typeof url === 'string' && url.startsWith('/') && !url.startsWith('//') ? url : './')
     const server = createServer((req, res) => {

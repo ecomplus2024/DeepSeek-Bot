@@ -813,10 +813,10 @@ var ZH = {
   "Push is not running on this host": "这台主机没有开启推送",
   "Notifications are off for this device": "此设备已关闭通知",
   "Pair a device": "配对设备",
-  "Open DS Bot on the other device at port {port}; it asks for the PIN.": "在另一台设备上通过端口 {port} 打开 DS Bot，它会要求输入 PIN。",
-  "No device is asking now.": "目前没有设备在请求配对。",
+  "Generate PIN": "生成 PIN",
+  "Type this PIN on the other device within 5 minutes.": "请在 5 分钟内把此 PIN 输入到另一台设备。",
+  "Open DS Bot on the other device at port {port}, then type the PIN it asks for.": "在另一台设备上通过端口 {port} 打开 DS Bot，然后输入它要求的 PIN。",
   "PIN tries are cooling down for a moment.": "PIN 尝试次数过多，正在冷却中。",
-  "A device is pairing — type this PIN on it": "有设备正在配对——请在它上面输入这个 PIN",
   // Feedback and errors
   Feedback: "反馈",
   "Report a problem": "报告问题",
@@ -1780,10 +1780,10 @@ var VI = {
   "Push is not running on this host": "Máy chủ này chưa bật thông báo đẩy",
   "Notifications are off for this device": "Thiết bị này đang tắt thông báo",
   "Pair a device": "Ghép đôi thiết bị",
-  "Open DS Bot on the other device at port {port}; it asks for the PIN.": "Mở DS Bot trên thiết bị kia qua cổng {port}; nó sẽ hỏi mã PIN.",
-  "No device is asking now.": "Hiện không có thiết bị nào đang yêu cầu ghép đôi.",
+  "Generate PIN": "Tạo PIN",
+  "Type this PIN on the other device within 5 minutes.": "Nhập mã PIN này trên thiết bị kia trong vòng 5 phút.",
+  "Open DS Bot on the other device at port {port}, then type the PIN it asks for.": "Mở DS Bot trên thiết bị kia qua cổng {port}, rồi nhập mã PIN mà nó hỏi.",
   "PIN tries are cooling down for a moment.": "Nhập sai PIN quá nhiều lần, đang tạm khoá một lát.",
-  "A device is pairing — type this PIN on it": "Có thiết bị đang ghép đôi — nhập mã PIN này trên thiết bị đó",
   // Feedback and errors
   Feedback: "Phản hồi",
   "Report a problem": "Báo lỗi",
@@ -6387,12 +6387,6 @@ function TeamSidebar(props) {
       (0, import_react10.createElement)("button", { type: "button", className: "bt-round", "aria-label": t("New…"), title: t("New…"), onClick: () => actions.openNewChat("new") }, (0, import_react10.createElement)(PlusIcon))
     ),
     wide && roster.readOnly ? (0, import_react10.createElement)("div", { className: "bt-hint bt-read-only", role: "status" }, hostText(roster.readOnly)) : null,
-    wide && roster.pair?.pin ? (0, import_react10.createElement)(
-      "div",
-      { className: "bt-pair", role: "status" },
-      (0, import_react10.createElement)("span", { className: "bt-pair-copy" }, t("A device is pairing — type this PIN on it")),
-      (0, import_react10.createElement)("span", { className: "bt-pair-pin" }, roster.pair.pin)
-    ) : null,
     (0, import_react10.createElement)(
       "div",
       { ref: listRef, className: "bt-list", role: "region", "aria-label": t("Bot list") },
@@ -6772,7 +6766,6 @@ var SIDEBAR_CSS = `
 .bt-rail .bt-row{position:relative}
 .bt-rail .bt-pin{position:absolute;top:3px;left:calc(50% + 12px)}
 .bt-side .bt-read-only{margin:4px 8px 6px;padding:8px 10px;border-radius:10px;background:var(--bt-hover);font-size:12px;line-height:1.45;text-align:left}
-.bt-side .bt-pair{margin:4px 8px 6px;padding:8px 10px;border-radius:10px;background:color-mix(in srgb,var(--bt-accent) 10%,transparent);font-size:12px;line-height:1.45;display:flex;align-items:center;justify-content:space-between;gap:8px}
 .bt-pair-pin{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:17px;font-weight:600;letter-spacing:.18em;color:var(--bt-accent);white-space:nowrap}
 [class*="_footArea"]:has(.bt-foot-account){grid-template-columns:auto minmax(0,1fr) auto;column-gap:6px}
 [class*="_footArea"]>[class*="_footerActions"]>div>.bt-foot-account{grid-column:1;order:1;display:inline-flex}
@@ -12318,7 +12311,7 @@ function GeneralPage({ roster, actions, run }) {
       SetSection,
       { key: "device", title: t("This device") },
       (0, import_react31.createElement)(NotifyRow, { key: "notify" }),
-      (0, import_react31.createElement)(PairRow, { key: "pair", pair: roster.pair })
+      (0, import_react31.createElement)(PairRow, { key: "pair", pair: roster.pair, actions, run })
     )
   ];
 }
@@ -12346,12 +12339,13 @@ function NotifyRow() {
     hint: error !== "" ? error : t("A push note when a Bot waits for you.")
   }, (0, import_react31.createElement)(Switch, { on: subscribed === true, label: t("Notifications"), disabled: subscribed === null, onChange: toggle }));
 }
-function PairRow({ pair }) {
+function PairRow({ pair, actions, run }) {
   if (pair?.enabled !== true) return null;
+  const cooling = Boolean(pair.cooldownUntil);
   return (0, import_react31.createElement)(SetRow, {
     label: t("Pair a device"),
-    hint: t("Open DS Bot on the other device at port {port}; it asks for the PIN.", { port: pair.port })
-  }, pair.pin ? (0, import_react31.createElement)("span", { className: "bt-pair-pin" }, pair.pin) : (0, import_react31.createElement)("span", { className: "bt-set-hint" }, pair.cooldownUntil ? t("PIN tries are cooling down for a moment.") : t("No device is asking now.")));
+    hint: pair.pin ? t("Type this PIN on the other device within 5 minutes.") : cooling ? t("PIN tries are cooling down for a moment.") : t("Open DS Bot on the other device at port {port}, then type the PIN it asks for.", { port: pair.port })
+  }, pair.pin ? (0, import_react31.createElement)("span", { className: "bt-pair-pin" }, pair.pin) : (0, import_react31.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", disabled: cooling, onClick: () => run(actions.pairMint()) }, t("Generate PIN")));
 }
 function MainBotsSection({ roster, actions, run }) {
   const mains = (roster.mainBotIds ?? []).map((id) => roster.byId[id]).filter(Boolean);
@@ -15574,6 +15568,7 @@ function apply(ctx) {
     secretCancel: (requestId) => after(call("secret-cancel", { requestId })),
     secretUpdate: (name, scope) => after(call("secret-update", { name, scope })),
     secretDelete: (name) => after(call("secret-delete", { name })),
+    pairMint: () => after(call("pair-mint")),
     connectorConnect: (id, token) => after(call("connector-connect", { id, token })),
     connectorDisconnect: (id) => after(call("connector-disconnect", { id })),
     connectorRetry: (id) => after(call("connector-retry", { id })),

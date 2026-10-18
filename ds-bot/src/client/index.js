@@ -550,6 +550,7 @@ export function apply(ctx) {
     secretCancel: requestId => after(call('secret-cancel', { requestId })),
     secretUpdate: (name, scope) => after(call('secret-update', { name, scope })),
     secretDelete: name => after(call('secret-delete', { name })),
+    pairMint: () => after(call('pair-mint')),
     connectorConnect: (id, token) => after(call('connector-connect', { id, token })),
     connectorDisconnect: id => after(call('connector-disconnect', { id })),
     connectorRetry: id => after(call('connector-retry', { id })),

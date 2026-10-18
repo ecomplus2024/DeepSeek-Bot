@@ -260,6 +260,8 @@ export function install(rt) {
           return ok(await rt.pushEndpoint?.(endpoint, body) ?? { enabled: false })
         case 'pair-status':
           return ok(rt.pairView?.() ?? { enabled: false })
+        case 'pair-mint':
+          return ok(rt.pairMint?.() ?? { enabled: false })
         case 'zalo-start':
         case 'zalo-cancel':
         case 'zalo-logout':
