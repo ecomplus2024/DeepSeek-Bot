@@ -48,7 +48,7 @@ DS Bot 的界面是桌面优先的：360–430px 视口下聊天列塌到接近 
 ### 远程访问：本地配对 PIN 门（pair-gate）
 
 - `dsh web` 强制只绑 `127.0.0.1`；挂隧道（cloudflared / 反向代理）把手机接进来是部署方的事。暴露到公网后，`?token=` URL 本身是 bearer 凭证——泄漏即等于交出整台机器的操作权（Bot 有工具、能写文件）。单靠这个 URL 不够，前面要加一道本地配对门。
-- `pwa.js` 在插件进程内再开一个 HTTP 服务（`config.pairPort` 或环境变量 `DS_BOT_PAIR_PORT`，不配置则不监听），做反向代理门：无 gate cookie 的请求只回 PIN 表单页，不转发；有合法 cookie 才把请求（含 WS upgrade 的裸 socket 透传）代理到 `127.0.0.1:<dsh 端口>`。隧道一律指向 gate 端口。
+- `pwa.js` 在插件进程内再开一个 HTTP 服务（`config.pairPort` 或环境变量 `DS_BOT_PAIR_PORT`，不配置则不监听），做反向代理门：无 gate cookie 的请求只回 PIN 表单页，不转发；有合法 cookie 才把请求（含 WS upgrade 的裸 socket 透传）代理到 `127.0.0.1:<dsh 端口>`。隧道一律指向 gate 端口。来自本机回环地址且 Host 也是回环的请求直接放行（本机进程本来就够得着 dsh，PIN 只会卡住显示 PIN 的那个界面），因此同一端口上本地浏览器照旧用 dsh 的 token/cookie 登录，远程流量才走 PIN。
 - PIN 流程：手机首次打开 → 表单页触发 `mintPin` 生成 6 位 PIN（TTL 5 分钟）→ **PIN 只显示在本地已登录的界面里**（侧栏横幅 + 「设置 → 本设备」卡片，经 `live().pair` 随状态下发到已鉴权浏览器）→ 手机输入 → `POST /pair` 校验通过 → gate 自签 cookie（`dsb_pair`，HMAC-SHA256、HttpOnly、SameSite=Strict、30 天，仿 dsh 自身 cookie 做法）→ 303 回跳表单里保存的原 URL（`next`）。结果是用户只看到一道 PIN——dsh 的 token 换 cookie 由 gate 代答（见下条）。
 - Token 代答：gate 代理 index 请求（`GET /`、`GET /index.html`）时若 dsh 回 401，就用 `ctx.connection.authenticatedUrl()` 读到的 launch token 重写一次上游请求——dsh 照常验 token、照常 mint 自己绑定该 authority 的 cookie，但 token 永不出现在浏览器 URL/历史里。dsh cookie 过期也被同一机制静默续上；远端用户全程只输过 PIN。
 - 防爆破：PIN 比对用 `timingSafeEqual`；连续 5 次错误作废该 PIN 并冷却 60 秒；PIN 一次性，验证成功即失效；没有进行中的 `pair-begin` 就不存在可猜的 PIN。

@@ -255,6 +255,16 @@ export function install(rt) {
         .catch(error => rt.warn('ds-bot: pair-gate.json write failed: %s', error?.message ?? error))
     }
     const authed = req => gateCookieValid(gate.secret, cookieOf(req, GATE_COOKIE))
+    // A loopback peer already reaches dsh directly, so PIN would only gate the
+    // UI that shows it. The Host check stops a remote client from claiming a
+    // loopback authority through the tunnel or a LAN port-forward.
+    const hostName = (req) => {
+      const host = String(req.headers.host ?? '').toLowerCase()
+      return host.startsWith('[') ? host.slice(0, host.indexOf(']') + 1) : host.split(':')[0]
+    }
+    const local = req =>
+      ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket?.remoteAddress)
+      && ['127.0.0.1', 'localhost', '[::1]'].includes(hostName(req))
     // The launch token this process would print for a manual login. The gate
     // replays it upstream so a paired device never handles it.
     const launchToken = (() => {
@@ -288,7 +298,7 @@ export function install(rt) {
         })
         return
       }
-      if (!authed(req)) {
+      if (!local(req) && !authed(req)) {
         // The form keeps the original URL in `next`, so a shared ?token= link
         // lands on the real dsh auth right after pairing.
         if (req.method === 'GET' || req.method === 'HEAD') form(res, 401, undefined, safeNext(req.url))
@@ -304,7 +314,7 @@ export function install(rt) {
           { host: '127.0.0.1', port: web.port, path, method: req.method, headers: req.headers },
           (reply) => {
             const indexPath = new URL(req.url ?? '/', 'http://x').pathname
-            if (!retried && launchToken !== null && reply.statusCode === 401
+            if (!retried && launchToken !== null && reply.statusCode === 401 && !local(req)
               && (req.method === 'GET' || req.method === 'HEAD') && (indexPath === '/' || indexPath === '/index.html')) {
               reply.resume()
               const url = new URL(req.url ?? '/', 'http://x')
@@ -324,7 +334,7 @@ export function install(rt) {
       pipe(req.url, false)
     })
     server.on('upgrade', (req, socket, head) => {
-      if (!authed(req)) { socket.destroy(); return }
+      if (!local(req) && !authed(req)) { socket.destroy(); return }
       const upstream = connectSocket(web.port, '127.0.0.1', () => {
         upstream.write(`${req.method} ${req.url} HTTP/${req.httpVersion}\r\n`)
         for (const [name, value] of Object.entries(req.headers)) upstream.write(`${name}: ${value}\r\n`)
