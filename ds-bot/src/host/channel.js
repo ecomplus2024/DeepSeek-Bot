@@ -77,10 +77,11 @@ export function install(rt) {
     memoryReviews: rt.memoryReviews(),
     connectors: rt.connectorsView(),
     capabilityStatuses: rt.capabilityStatusesView(),
+    zalo: rt.zaloLive?.() ?? { bots: {}, login: null },
   })
   // What a host that only reads the team may still answer.
   // Updates change the dsh profile, not the team, so a reading host may run them too.
-  const READS = new Set(['state', 'models', 'efforts', 'earlier', 'room-progress', 'exchange', 'exchange-text', 'file-text', 'usage', 'schedules', 'memory-view', 'browser-wait', 'browser-result', 'diagnostics', 'diagnostics-log', 'diagnostics-clear', 'update-check', 'update-install', 'dsh-update-install', 'repo-stars', 'approval-answer'])
+  const READS = new Set(['state', 'models', 'efforts', 'earlier', 'room-progress', 'exchange', 'exchange-text', 'file-text', 'usage', 'schedules', 'memory-view', 'browser-wait', 'browser-result', 'diagnostics', 'diagnostics-log', 'diagnostics-clear', 'update-check', 'update-install', 'dsh-update-install', 'repo-stars', 'approval-answer', 'zalo-status'])
 
   function setPrefs(body) {
     if (body.theme !== undefined) {
@@ -248,6 +249,16 @@ export function install(rt) {
         case 'connector-retry':
           await rt.load()
           return ok(await rt.connectorEndpoint(endpoint, body))
+        case 'zalo-status':
+          return ok(rt.zaloLive?.() ?? { bots: {}, login: null })
+        case 'zalo-start':
+        case 'zalo-cancel':
+        case 'zalo-logout':
+        case 'zalo-reconnect':
+        case 'zalo-threads':
+        case 'zalo-thread-mode':
+          await rt.load()
+          return ok(await rt.zaloEndpoint(endpoint, body))
         case 'capability-save':
         case 'capability-delete':
         case 'capability-approve':

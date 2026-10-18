@@ -68,7 +68,17 @@ export const TEAM_TOOLS = [
   'read_group_chat', 'remember', 'forget', 'recall', 'read_browser',
   'list_capabilities', 'save_capability', 'delete_capability',
   'attach_capability', 'detach_capability',
+  'zalo_threads', 'zalo_read', 'zalo_send',
 ]
+
+// Zalo (src/host/zalo.js): a bound Bot's watched threads keep this many inbound
+// messages; sends are spaced and capped so a personal account does not trip Zalo.
+export const ZALO_MODES = ['off', 'talk', 'watch']
+export const ZALO_BUFFER_MAX = 50
+export const ZALO_WAKE_LINES = 30
+export const ZALO_SEND_GAP_MS = 3_000
+export const ZALO_SEND_WINDOW_MS = 600_000
+export const ZALO_SEND_MAX = 20
 // Answers a group gives to what members post after the round moved on (their finished
 // work, mostly), before the user speaks there again.
 export const ROOM_LATE_ROUNDS = 10

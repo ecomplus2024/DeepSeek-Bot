@@ -56,11 +56,180 @@ function ConnectorRow({ connector, actions }) {
     error ? h('div', { className: 'bt-connector-error', role: 'alert' }, error) : null)
 }
 
-// Settings → Connectors: one row per connector.
+// Settings → Connectors: one row per connector, then the Zalo card.
 export function ConnectorsPage({ roster, actions }) {
   const list = roster?.connectors ?? []
   return h('section', { className: 'bt-set-section' },
     h('div', { className: 'bt-set-card bt-connectors-card' }, list.length === 0
       ? h('div', { className: 'bt-set-row' }, h('span', { className: 'bt-set-hint' }, t('No connectors')))
-      : list.map(connector => h(ConnectorRow, { key: connector.id, connector, actions }))))
+      : list.map(connector => h(ConnectorRow, { key: connector.id, connector, actions }))),
+    h(ZaloCard, { roster, actions }))
+}
+
+export const ZaloMark = () => h('svg', { width: 20, height: 20, viewBox: '0 0 16 16', fill: 'currentColor', 'aria-hidden': true },
+  h('path', { d: 'M2.6 1.5h10.8c.6 0 1.1.5 1.1 1.1v7.6c0 .6-.5 1.1-1.1 1.1H6.4l-3.3 3.2c-.3.3-.8.1-.8-.4V2.6c0-.6.1-1.1.3-1.1z' }),
+  h('path', { d: 'M5.2 5h5.6v1.1l-3.6 3.7h3.6v1.2H5.2V9.9l3.6-3.7H5.2z', fill: 'var(--bt-card)' }))
+
+const ZALO_MODES = ['off', 'talk', 'watch']
+const modeLabel = { off: () => t('Off'), talk: () => t('Talk'), watch: () => t('Watch') }
+
+function zaloStatus(entry) {
+  if (entry === undefined || entry.account === null || entry.account === undefined) return ''
+  if (entry.state === 'connecting') return t('Connecting…')
+  if (entry.state === 'error') return t('Could not connect: {error}', { error: entry.error ?? '' })
+  if (entry.state === 'ready') return entry.account?.name ? t('Connected as {account}', { account: entry.account.name }) : t('Connected')
+  return t('Disconnected')
+}
+
+function ThreadRow({ botId, thread, actions }) {
+  const [busy, setBusy] = useState(false)
+  const [mode, setMode] = useState(thread.mode)
+  const [keywords, setKeywords] = useState((thread.keywords ?? []).join(', '))
+  const [error, setError] = useState(null)
+  const save = (patch) => {
+    const next = { mode, ...patch }
+    setBusy(true)
+    setError(null)
+    actions.zaloThreadMode(botId, { threadId: thread.id, kind: thread.kind, name: thread.name, ...next })
+      .then(() => setMode(next.mode), failure => setError(failure?.message ?? String(failure)))
+      .finally(() => setBusy(false))
+  }
+  return h('div', { className: 'bt-zalo-thread' },
+    h('span', { className: 'bt-zalo-thread-name', title: thread.id },
+      thread.name || thread.id,
+      h('span', { className: 'bt-zalo-kind' }, thread.kind === 'group' ? t('group') : t('direct'))),
+    h('select', {
+      className: 'bt-select bt-zalo-mode', value: mode, disabled: busy,
+      onChange: event => save({ mode: event.target.value, keywords: keywords.split(',').map(word => word.trim()).filter(word => word !== '') }),
+    }, ZALO_MODES.map(value => h('option', { key: value, value }, modeLabel[value]()))),
+    mode === 'watch'
+      ? h('input', {
+          className: 'bt-input bt-zalo-keys', value: keywords, disabled: busy,
+          placeholder: t('Wake keywords, comma-separated'),
+          onChange: event => setKeywords(event.target.value),
+          onBlur: () => save({ keywords: keywords.split(',').map(word => word.trim()).filter(word => word !== '') }),
+        })
+      : null,
+    error ? h('span', { className: 'bt-connector-error' }, error) : null)
+}
+
+const THREADS_PAGE = 50
+
+function ZaloBound({ bot, entry, actions }) {
+  const [open, setOpen] = useState(false)
+  const [threads, setThreads] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+  const [query, setQuery] = useState('')
+  const [limit, setLimit] = useState(THREADS_PAGE)
+  const state = entry.state === 'error' ? 'error' : entry.state === 'ready' ? 'ready' : 'off'
+  const toggle = () => {
+    const next = !open
+    setOpen(next)
+    if (next) {
+      setThreads({ loading: true })
+      actions.zaloThreads(bot.id).then(setThreads, failure => { setThreads(null); setError(failure?.message ?? String(failure)) })
+    }
+  }
+  const search = query.trim().toLowerCase()
+  const matches = thread => search === ''
+    || String(thread.name ?? '').toLowerCase().includes(search)
+    || String(thread.id).includes(search)
+  const sections = threads === null || threads.loading === true ? [] : [
+    [t('People'), threads.users ?? []],
+    [t('Groups'), threads.groups ?? []],
+    [t('Other threads'), threads.others ?? []],
+  ]
+    .map(([title, list]) => [title, list.filter(matches)])
+    .filter(([, list]) => list.length > 0)
+  // Spend the page budget across the sections in order; the rest waits for "more".
+  let budget = limit
+  const visible = []
+  let hidden = 0
+  for (const [title, list] of sections) {
+    const shown = list.slice(0, Math.max(budget, 0))
+    hidden += list.length - shown.length
+    if (shown.length > 0) visible.push([title, shown])
+    budget -= shown.length
+  }
+  return h('div', { className: 'bt-connector', 'data-state': state },
+    h('div', { className: 'bt-connector-head' },
+      h('span', { className: 'bt-connector-mark' }, h(ZaloMark)),
+      h('span', { className: 'bt-connector-text' },
+        h('span', { className: 'bt-connector-name' }, t('Zalo · {bot}', { bot: bot.name })),
+        h('span', { className: 'bt-connector-status' }, zaloStatus(entry))),
+      h('span', { className: 'bt-connector-actions' },
+        entry.state === 'off' || entry.state === 'error'
+          ? h('button', { type: 'button', className: 'bt-soft bt-soft-sm', disabled: busy, onClick: () => { setBusy(true); actions.zaloReconnect(bot.id).catch(failure => setError(failure?.message ?? String(failure))).finally(() => setBusy(false)) } }, t('Reconnect'))
+          : null,
+        h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: toggle }, open ? t('Hide threads') : t('Threads')),
+        h('button', {
+          type: 'button', className: 'bt-soft bt-soft-sm', disabled: busy,
+          onClick: () => { setBusy(true); actions.zaloLogout(bot.id).catch(failure => setError(failure?.message ?? String(failure))).finally(() => setBusy(false)) },
+        }, t('Disconnect')))),
+    open ? h('div', { className: 'bt-zalo-threads' },
+      threads !== null && threads.loading !== true
+        ? h('input', {
+            className: 'bt-input bt-zalo-search', value: query,
+            placeholder: t('Search threads…'), 'aria-label': t('Search threads'),
+            onChange: event => { setQuery(event.target.value); setLimit(THREADS_PAGE) },
+          })
+        : null,
+      visible.length === 0
+        ? h('span', { className: 'bt-set-hint' }, threads === null || threads.loading === true ? t('Loading…') : (search !== '' ? t('No threads match') : t('No threads')))
+        : visible.map(([title, list]) => h('div', { key: title, className: 'bt-zalo-thread-group' },
+            h('div', { className: 'bt-zalo-thread-title' }, title),
+            list.map(thread => h(ThreadRow, { key: thread.id, botId: bot.id, thread, actions })))),
+      hidden > 0
+        ? h('button', { type: 'button', className: 'bt-soft bt-soft-sm bt-zalo-more', onClick: () => setLimit(value => value + THREADS_PAGE) }, t('Show {count} more', { count: hidden > THREADS_PAGE ? THREADS_PAGE : hidden }))
+        : null,
+      threads?.error ? h('span', { className: 'bt-connector-error', role: 'alert' }, threads.error) : null) : null,
+    error ? h('div', { className: 'bt-connector-error', role: 'alert' }, error) : null)
+}
+
+function ZaloConnect({ roster, actions, login }) {
+  const unbound = (roster?.bots ?? []).filter(bot => roster?.zalo?.bots?.[bot.id]?.account === undefined || roster?.zalo?.bots?.[bot.id]?.account === null)
+  const [botId, setBotId] = useState('')
+  const [busy, setBusy] = useState(false)
+  const picked = botId || unbound[0]?.id || ''
+  const start = () => { if (picked !== '') { setBusy(true); actions.zaloStart(picked).finally(() => setBusy(false)) } }
+  return h('div', { className: 'bt-connector', 'data-state': 'off' },
+    h('div', { className: 'bt-connector-head' },
+      h('span', { className: 'bt-connector-mark' }, h(ZaloMark)),
+      h('span', { className: 'bt-connector-text' },
+        h('span', { className: 'bt-connector-name' }, 'Zalo'),
+        h('span', { className: 'bt-connector-status' }, t('Let a Bot follow and answer Zalo chats'))),
+      h('span', { className: 'bt-connector-actions' },
+        login === null && unbound.length > 1
+          ? h('select', { className: 'bt-select bt-zalo-bot', value: picked, onChange: event => setBotId(event.target.value) },
+              unbound.map(bot => h('option', { key: bot.id, value: bot.id }, bot.name)))
+          : null,
+        login === null
+          ? h('button', { type: 'button', className: 'bt-soft bt-soft-sm', disabled: busy || unbound.length === 0, onClick: start },
+              busy ? t('Connecting…') : t('Connect'))
+          : h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: () => void actions.zaloCancel() }, t('Cancel')))),
+    login !== null && login.phase === 'qr' ? h('div', { className: 'bt-zalo-qr-box' },
+      login.qr !== null && login.qr !== undefined
+        ? h('img', { className: 'bt-zalo-qr', src: login.qr, alt: t('Zalo login QR code') })
+        : h('span', { className: 'bt-set-hint' }, t('Asking Zalo for a QR code…')),
+      h('span', { className: 'bt-set-hint' }, t('Scan with the Zalo app to sign the Bot in'))) : null,
+    login !== null && login.phase === 'scanned' ? h('div', { className: 'bt-zalo-qr-box' },
+      h('span', { className: 'bt-set-hint' }, t('Scanned{name} — confirm on your phone', { name: login.name ? ` (${login.name})` : '' }))) : null,
+    login !== null && (login.phase === 'expired' || login.phase === 'error') ? h('div', { className: 'bt-zalo-qr-box' },
+      h('span', { className: 'bt-connector-error', role: 'alert' }, login.phase === 'expired' ? t('The QR code expired; try again') : (login.error ?? t('Login failed'))),
+      h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: start }, t('Try again'))) : null)
+}
+
+// The Zalo card: one bound account per Bot, QR sign-in, and per-thread modes.
+export function ZaloCard({ roster, actions }) {
+  const zalo = roster?.zalo ?? { bots: {}, login: null }
+  const bots = roster?.bots ?? []
+  const bound = bots.filter(bot => zalo.bots?.[bot.id]?.account !== undefined && zalo.bots?.[bot.id]?.account !== null)
+  const login = zalo.login ?? null
+  // An unbound card stays for the pending login even when every Bot is bound.
+  const showConnect = login !== null || bound.length < bots.length
+  return h('div', { className: 'bt-set-card bt-connectors-card bt-zalo-card' },
+    bound.map(bot => h(ZaloBound, { key: bot.id, bot, entry: zalo.bots[bot.id], actions })),
+    showConnect ? h(ZaloConnect, { roster, actions, login }) : null,
+    bound.length === 0 && !showConnect ? h('div', { className: 'bt-set-row' }, h('span', { className: 'bt-set-hint' }, t('No Bots to link'))) : null)
 }

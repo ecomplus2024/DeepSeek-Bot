@@ -189,7 +189,8 @@ export function VoiceMode({ sessionId, roster, actions, useSessions, useSessionS
     setHeard('')
     if (!window.speechSynthesis || !spoken) { setPhase('listening'); return }
     const utterance = new SpeechSynthesisUtterance(spoken)
-    utterance.lang = /[\u3400-\u9fff]/.test(spoken) ? 'zh-CN' : 'en-US'
+    utterance.lang = /[\u3400-\u9fff]/.test(spoken) ? 'zh-CN'
+      : /[ăĂđĐơƠưƯạ-ỹ]/.test(spoken) ? 'vi-VN' : 'en-US'
     utterance.onend = () => setPhase(current => (current === 'speaking' ? 'listening' : current))
     utterance.onerror = utterance.onend
     setPhase('speaking')

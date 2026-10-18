@@ -25,6 +25,7 @@ export function install(rt) {
     if (resumed && role !== 'room') return `[Message from ${fromName} · DeepSeek Harness restarted while you were working on it]`
     if (role === 'reply') return `[Reply from ${fromName}${goesOn}]`
     if (role === 'stopped') return `[Stopped by ${fromName}]`
+    if (role === 'zalo') return `[Zalo · ${note}]`
     if (role === 'room') return `[Group chat "${roomName}" · ${note}]`
     if (role === 'report') return `[Group chat "${roomName}" · replies to your post${goesOn}]`
     if (role === 'kickoff') return '[Bot team setup]'
@@ -48,7 +49,7 @@ export function install(rt) {
   // `length`: the whole message's length when it went as a file (attachLong). `work`:
   // the work (handoffs.js) a result that came back goes on with. `merged`: a request
   // that takes in an earlier one its recipient had not read, under that one's exchange.
-  async function deliver({ fromId, toId, sessionId, text, role, replyTo, roomId, audience, note, exchangeId = randomUUID(), steer = false, deferred = false, resumed = false, retried = false, resent = false, merged = false, askedBy, fromRoomId, files = [], length, work }) {
+  async function deliver({ fromId, toId, sessionId, text, role, replyTo, roomId, audience, note, exchangeId = randomUUID(), steer = false, deferred = false, resumed = false, retried = false, resent = false, merged = false, askedBy, fromRoomId, files = [], length, work, sender }) {
     const from = rt.botOf(fromId)
     const to = rt.botOf(toId)
     if (to === undefined) throw new Error(`Unknown Bot ${toId}`)
@@ -61,7 +62,7 @@ export function install(rt) {
       form: 'relay',
       role,
       exchangeId,
-      senderName: fromName,
+      senderName: sender ?? fromName,
       ...(work ? { work } : {}),
       ...(fromId ? { senderSessionId: fromId } : {}),
       ...(replyTo ? { replyTo } : {}),
