@@ -69,6 +69,7 @@ export const TEAM_TOOLS = [
   'list_capabilities', 'save_capability', 'delete_capability',
   'attach_capability', 'detach_capability',
   'gemlogin_profiles', 'gemlogin_open', 'gemlogin_close', 'gemlogin_browse',
+  'chromium_open', 'chromium_close', 'chromium_browse',
   'use_computer',
   'zalo_threads', 'zalo_read', 'zalo_send',
 ]
@@ -78,6 +79,9 @@ export const TEAM_TOOLS = [
 export const ZALO_MODES = ['off', 'talk', 'watch']
 export const ZALO_BUFFER_MAX = 50
 export const ZALO_WAKE_LINES = 30
+// A watch thread wakes the Bot at most this often; quieter mentions just
+// stay in the buffer until the next real wake or a zalo_read.
+export const ZALO_WAKE_COOLDOWN_MS = 120_000
 export const ZALO_SEND_GAP_MS = 3_000
 export const ZALO_SEND_WINDOW_MS = 600_000
 export const ZALO_SEND_MAX = 20

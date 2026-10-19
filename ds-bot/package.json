@@ -47,6 +47,7 @@
     "check": "sh dev/check.sh"
   },
   "dependencies": {
+    "@puppeteer/browsers": "3.2.4",
     "puppeteer-core": "25.13.0",
     "web-push": "3.6.7",
     "zca-js": "2.2.0"

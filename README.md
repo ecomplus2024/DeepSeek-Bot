@@ -76,6 +76,10 @@ Settings → **Capabilities** is a shared library of MCP servers, skills and pac
 
 When the [GemLogin](https://gemlogin.vn) app runs on the same computer, a bot can drive one of its profiles as a real browser — proxy, fingerprint and cookies included — through Puppeteer: open the profile, read pages, click, type and take screenshots, with a live preview of each open profile in the bot's Browser tab. Unlike the bot's browser panel, which you steer, this browser answers to the bot. Turn it off with the `gemlogin` option; see [`ds-bot/README.md`](ds-bot/README.md#gemlogin).
 
+### Chromium browsers
+
+With no companion app at all, a bot can drive its own Chromium: the Chrome/Edge/Chromium installed on the computer is used, and when there is none a Chrome for Testing build is downloaded on the spot. Named sessions keep their own lasting profiles — cookies and logins survive restarts — and the same live preview cards show in the bot's Browser tab. Turn it off with the `chromium` option; see [`ds-bot/README.md`](ds-bot/README.md#chromium).
+
 ### Computer control
 
 In dsh Desktop, a bot can drive the machine itself: real mouse and keyboard on your screen through the operating system's input injection. A `screenshot` hands it the picture, `click`/`type`/`key`/`drag`/`scroll` act on it, and a named target — "the Save button" — is located by a [TypeSafe](https://docs.typesafe.ai/images) vision request that must confirm the element is actually there before the click lands; a located target is then remembered as a pixel spot and reused while the screen there stays the same. Element location needs a `TYPESAFE_API_KEY` secret; one bot drives at a time. Turn it off with the `computer` option; see [`ds-bot/README.md`](ds-bot/README.md#computer-control).

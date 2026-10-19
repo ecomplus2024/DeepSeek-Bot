@@ -249,6 +249,7 @@ var ZH = {
   "The browser is in the DSH Desktop app.": "浏览器在 DSH 桌面版应用里。",
   "New tab": "新标签页",
   "GemLogin browser": "GemLogin 浏览器",
+  "Chromium browser": "Chromium 浏览器",
   "Show window": "显示窗口",
   "Hide window": "隐藏窗口",
   "hidden": "已隐藏",
@@ -1227,6 +1228,7 @@ var VI = {
   "The browser is in the DSH Desktop app.": "Trình duyệt nằm trong ứng dụng DSH Desktop.",
   "New tab": "Thẻ mới",
   "GemLogin browser": "Trình duyệt GemLogin",
+  "Chromium browser": "Trình duyệt Chromium",
   "Show window": "Hiện cửa sổ",
   "Hide window": "Ẩn cửa sổ",
   "hidden": "đang ẩn",
@@ -13092,19 +13094,20 @@ function PermissionRow({ bot, roster, actions, run }) {
     (0, import_react34.createElement)(PermissionPicker, { catalog, saved: bot.permission ?? catalog.defaultPreset, repick: bot.permission === void 0, onPick: (permission) => run(actions.updateBot(bot.id, { permission })) })
   );
 }
-function GemLoginCards({ bot, actions }) {
+function DrivenBrowserCards({ bot, title, list, shot, show, click }) {
   const [items, setItems] = (0, import_react34.useState)(null);
   const [shots, setShots] = (0, import_react34.useState)({});
   (0, import_react34.useEffect)(() => {
-    if (typeof actions.gemLoginList !== "function") return void 0;
+    if (typeof list !== "function") return void 0;
     let dead = false;
     const pull = async () => {
-      const list = await actions.gemLoginList(bot.id);
-      if (dead || !Array.isArray(list)) return;
-      setItems(list);
-      await Promise.all(list.map(async (item) => {
-        const shot = await actions.gemLoginShot(bot.id, item.profileId);
-        if (!dead && shot?.image) setShots((last) => ({ ...last, [item.profileId]: shot }));
+      const fetched = await list(bot.id);
+      if (dead || !Array.isArray(fetched)) return;
+      setItems(fetched);
+      await Promise.all(fetched.map(async (item) => {
+        const id = item.profileId ?? item.id;
+        const frame = await shot(bot.id, id);
+        if (!dead && frame?.image) setShots((last) => ({ ...last, [id]: frame }));
       }));
     };
     void pull();
@@ -13113,43 +13116,46 @@ function GemLoginCards({ bot, actions }) {
       dead = true;
       clearInterval(timer);
     };
-  }, [bot.id, actions]);
+  }, [bot.id, list, shot]);
   if (!items?.length) return null;
   return (0, import_react34.createElement)(
     "div",
     { className: "bt-gem" },
-    (0, import_react34.createElement)("div", { className: "bt-section-title" }, t("GemLogin browser")),
-    items.map((item, index) => (0, import_react34.createElement)(
-      "div",
-      { key: item.profileId, className: "bt-bcard", style: { animationDelay: `${index * 30}ms` } },
-      (0, import_react34.createElement)(
+    (0, import_react34.createElement)("div", { className: "bt-section-title" }, t(title)),
+    items.map((item, index) => {
+      const id = item.profileId ?? item.id;
+      return (0, import_react34.createElement)(
         "div",
-        { className: "bt-bcard-shot bt-gem-shot", style: shots[item.profileId]?.width ? { aspectRatio: `${shots[item.profileId].width}/${shots[item.profileId].height}` } : void 0 },
-        shots[item.profileId] ? (0, import_react34.createElement)("img", {
-          src: shots[item.profileId].image,
-          alt: "",
-          draggable: false,
-          title: t("Click to interact"),
-          onClick: (event) => {
-            const box = event.currentTarget.getBoundingClientRect();
-            if (box.width > 0 && box.height > 0) void actions.gemLoginClick(bot.id, item.profileId, (event.clientX - box.left) / box.width, (event.clientY - box.top) / box.height);
-          }
-        }) : (0, import_react34.createElement)("span", { className: "bt-bcard-blank" }, (0, import_react34.createElement)(GlobeIcon), (0, import_react34.createElement)("span", null, item.name))
-      ),
-      (0, import_react34.createElement)(
-        "div",
-        { className: "bt-bcard-row" },
-        (0, import_react34.createElement)("span", { className: "bt-bcard-title" }, `${item.name}${item.title || item.url ? ` · ${item.title || item.url}` : ""}`),
-        item.hidden ? (0, import_react34.createElement)("span", { className: "bt-gem-badge" }, t("hidden")) : null,
+        { key: id, className: "bt-bcard", style: { animationDelay: `${index * 30}ms` } },
         (0, import_react34.createElement)(
-          "button",
-          { type: "button", className: "bt-gem-toggle", onClick: () => {
-            void actions.gemLoginShow(bot.id, item.profileId, item.hidden);
-          } },
-          item.hidden ? t("Show window") : t("Hide window")
+          "div",
+          { className: "bt-bcard-shot bt-gem-shot", style: shots[id]?.width ? { aspectRatio: `${shots[id].width}/${shots[id].height}` } : void 0 },
+          shots[id] ? (0, import_react34.createElement)("img", {
+            src: shots[id].image,
+            alt: "",
+            draggable: false,
+            title: t("Click to interact"),
+            onClick: (event) => {
+              const box = event.currentTarget.getBoundingClientRect();
+              if (box.width > 0 && box.height > 0) void click(bot.id, id, (event.clientX - box.left) / box.width, (event.clientY - box.top) / box.height);
+            }
+          }) : (0, import_react34.createElement)("span", { className: "bt-bcard-blank" }, (0, import_react34.createElement)(GlobeIcon), (0, import_react34.createElement)("span", null, item.name))
+        ),
+        (0, import_react34.createElement)(
+          "div",
+          { className: "bt-bcard-row" },
+          (0, import_react34.createElement)("span", { className: "bt-bcard-title" }, `${item.name}${item.title || item.url ? ` · ${item.title || item.url}` : ""}`),
+          item.hidden ? (0, import_react34.createElement)("span", { className: "bt-gem-badge" }, t("hidden")) : null,
+          item.headless === true ? null : (0, import_react34.createElement)(
+            "button",
+            { type: "button", className: "bt-gem-toggle", onClick: () => {
+              void show(bot.id, id, item.hidden);
+            } },
+            item.hidden ? t("Show window") : t("Hide window")
+          )
         )
-      )
-    ))
+      );
+    })
   );
 }
 function BrowserCards({ bot, sessionId, roster, actions, useBrowserTabs, useBrowserPages }) {
@@ -13158,7 +13164,10 @@ function BrowserCards({ bot, sessionId, roster, actions, useBrowserTabs, useBrow
   (0, import_react34.useEffect)(() => {
     actions.browserEnsure?.(bot.id);
   }, [bot.id]);
-  const gem = (0, import_react34.createElement)(GemLoginCards, { bot, actions });
+  const gem = [
+    (0, import_react34.createElement)(DrivenBrowserCards, { key: "gem", bot, title: "GemLogin browser", list: actions.gemLoginList, shot: actions.gemLoginShot, show: actions.gemLoginShow, click: actions.gemLoginClick }),
+    (0, import_react34.createElement)(DrivenBrowserCards, { key: "chromium", bot, title: "Chromium browser", list: actions.chromiumList, shot: actions.chromiumShot, show: actions.chromiumShow, click: actions.chromiumClick })
+  ];
   if (roster.browser !== true || !actions.browserShow) {
     return (0, import_react34.createElement)("div", { className: "bt-bcards" }, gem, (0, import_react34.createElement)("div", { className: "bt-muted" }, t("The browser is in the DSH Desktop app.")));
   }
@@ -15742,6 +15751,13 @@ function apply(ctx) {
     gemLoginShot: (bot, profile) => call("gemlogin-shot", { bot, profile }).catch(() => ({ image: null })),
     gemLoginShow: (bot, profile, show) => call("gemlogin-show", { bot, profile, show }).catch(() => ({ ok: false })),
     gemLoginClick: (bot, profile, fx, fy) => call("gemlogin-click", { bot, profile, fx, fy }).catch(() => ({ ok: false })),
+    chromiumList: (bot) => call("chromium-list", { bot }).catch((error) => {
+      console.warn("[ds-bot] chromium list", error);
+      return [];
+    }),
+    chromiumShot: (bot, session) => call("chromium-shot", { bot, session }).catch(() => ({ image: null })),
+    chromiumShow: (bot, session, show) => call("chromium-show", { bot, session, show }).catch(() => ({ ok: false })),
+    chromiumClick: (bot, session, fx, fy) => call("chromium-click", { bot, session, fx, fy }).catch(() => ({ ok: false })),
     connectorConnect: (id, token) => after(call("connector-connect", { id, token })),
     connectorDisconnect: (id) => after(call("connector-disconnect", { id })),
     connectorRetry: (id) => after(call("connector-retry", { id })),

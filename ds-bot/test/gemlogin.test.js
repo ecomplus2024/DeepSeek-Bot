@@ -4,8 +4,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { createRuntime } from '../index.js'
-import { createGemApi, createGemSessions, extractPage, findProfile } from '../src/host/gemlogin.js'
+import { createGemApi, createGemSessions, findProfile } from '../src/host/gemlogin.js'
 import { fakeContext } from './fake-ctx.js'
+import { fakeBrowser } from './fake-browser.js'
 
 const TEAM = {
   version: 1,
@@ -20,59 +21,6 @@ const TEAM = {
   exchanges: [],
   exchangeTurns: {},
   questions: {},
-}
-
-function fakePage(url = 'about:blank') {
-  const page = {
-    _url: url,
-    _closed: false,
-    clicks: [],
-    typed: [],
-    mouseClicks: [],
-    cdpCalls: [],
-    _bounds: { left: 50, top: 50, width: 1280, height: 800, windowState: 'normal' },
-    createCDPSession: async () => ({
-      send: async (method, params) => {
-        page.cdpCalls.push([method, params])
-        if (method === 'Browser.getWindowForTarget') return { windowId: 1, bounds: page._bounds }
-        if (method === 'Browser.setWindowBounds') page._bounds = { ...page._bounds, ...params.bounds }
-        return {}
-      },
-    }),
-    bringToFront: async () => {},
-    url() { return page._url },
-    isClosed() { return page._closed },
-    title: async () => 'Fake title',
-    goto: async (u) => { page._url = u },
-    evaluate: async (fn) => {
-      if (fn === extractPage) return { title: 'Fake title', url: page._url, text: 'page body', items: [{ role: 'link', name: 'More', href: 'https://x/' }] }
-      if (typeof fn === 'function') return undefined
-      return 'eval-result'
-    },
-    click: async (selector) => { page.clicks.push(selector) },
-    type: async (selector, text) => { page.typed.push([selector, text]) },
-    mouse: { click: async (x, y) => { page.mouseClicks.push([x, y]) } },
-    viewport: () => ({ width: 1280, height: 800 }),
-    focus: async () => {},
-    keyboard: { press: async () => {} },
-    screenshot: async () => Buffer.from('jpeg-bytes'),
-    waitForSelector: async () => ({}),
-    goBack: async () => ({}),
-    goForward: async () => ({}),
-    reload: async () => ({}),
-  }
-  return page
-}
-
-function fakeBrowser() {
-  const browser = {
-    connected: true,
-    _pages: [fakePage('https://start.example/')],
-    pages: async () => browser._pages.filter(page => !page.isClosed()),
-    newPage: async () => { const page = fakePage('about:blank'); browser._pages.push(page); return page },
-    disconnect: async () => { browser.connected = false },
-  }
-  return browser
 }
 
 // Answers the GemLogin local API the way the app does: { success, message, data }.
@@ -216,6 +164,73 @@ test('hidden:false opens the window on-screen', async (t) => {
   t.after(stop)
   assert.match(await tool('gemlogin_open', { profile: '23', hidden: false }, 'b2'), /is open/)
   assert.ok(!calls.some(url => url.includes('win_pos=')))
+})
+
+test('browse steps run a whole sequence in one call and stop at a failure', async (t) => {
+  const browser = fakeBrowser()
+  const { tool, stop } = start({ browser })
+  t.after(stop)
+  await tool('gemlogin_open', { profile: '23' }, 'b2')
+  const page = browser._pages[0]
+
+  const ran = await tool('gemlogin_browse', { action: 'steps', steps: [
+    { action: 'click', selector: '.conv' },
+    { action: 'wait_for', selector: '.composer' },
+    { action: 'type', selector: '.composer', text: 'Chào anh' },
+    { action: 'press', key: 'Enter' },
+  ] }, 'b2')
+  assert.match(ran, /^Ran 4 steps; the page is now Fake title — https:\/\/start\.example\/\./)
+  assert.match(ran, /1\. click "\.conv" — Clicked "\.conv"\./)
+  assert.match(ran, /4\. press Enter — Pressed Enter\./)
+  assert.deepEqual(page.clicks, ['.conv'])
+  assert.deepEqual(page.typed, [['.composer', 'Chào anh']])
+
+  const stopped = await tool('gemlogin_browse', { action: 'steps', steps: [
+    { action: 'press', key: 'Enter' },
+    { action: 'use_tab', tab: 99 },
+    { action: 'press', key: 'Tab' },
+  ] }, 'b2')
+  assert.match(stopped, /^Stopped at step 2 of 3\./)
+  assert.match(stopped, /2\. use_tab failed: No tab 99/)
+  assert.ok(!stopped.includes('Pressed Tab'))
+
+  assert.match(await tool('gemlogin_browse', { action: 'steps', steps: [{ action: 'steps', steps: [] }] }, 'b2'), /Stopped at step 1 of 1\.[\s\S]*steps cannot nest/)
+  assert.match(await tool('gemlogin_browse', { action: 'steps', steps: [] }, 'b2'), /steps needs a list/)
+  assert.match(await tool('gemlogin_browse', { action: 'steps' }, 'b2'), /steps needs a list/)
+  const over = await tool('gemlogin_browse', { action: 'steps', steps: Array.from({ length: 21 }, () => ({ action: 'press', key: 'Tab' })) }, 'b2')
+  assert.match(over, /At most 20 steps/)
+})
+
+test('read with a selector scopes the page to that part', async (t) => {
+  const { tool, stop } = start()
+  t.after(stop)
+  await tool('gemlogin_open', { profile: '23' }, 'b2')
+  assert.match(await tool('gemlogin_browse', { action: 'read', selector: '.chat' }, 'b2'), /page body in \.chat/)
+  assert.match(await tool('gemlogin_browse', { action: 'read', selector: 'no-such' }, 'b2'), /Nothing matches "no-such"/)
+})
+
+test('gemlogin_open waits out the app\'s "being opened" state', async (t) => {
+  const browser = fakeBrowser()
+  let starts = 0
+  const inner = fakeGemLogin([])
+  const fetch = async (url) => {
+    if (new URL(url).pathname === '/api/profiles/start/23') {
+      starts += 1
+      if (starts === 1) return { ok: true, json: async () => ({ success: false, message: 'Profile is currently being opened. Please wait.' }) }
+    }
+    return inner(url)
+  }
+  const home = mkdtempSync(join(tmpdir(), 'ds-bot-gem-'))
+  writeFileSync(join(home, 'state.json'), JSON.stringify(TEAM))
+  const ctx = fakeContext({})
+  createRuntime(ctx, { home, gemlogin: { url: 'http://gem.test', fetch, connect: async () => browser } })
+  t.after(async () => {
+    await ctx.dispose()
+    try { rmSync(home, { recursive: true, force: true, maxRetries: 5 }) } catch { /* a late home write keeps the dir */ }
+  })
+  const tool = (name, args, agent) => ctx.registeredTools.get(name).execute(args, { agent: { id: agent } })
+  assert.match(await tool('gemlogin_open', { profile: '23' }, 'b2'), /is open/)
+  assert.equal(starts, 2)
 })
 
 test('config.gemlogin false keeps the tools off', (t) => {

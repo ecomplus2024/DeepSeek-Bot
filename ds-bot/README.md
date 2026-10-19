@@ -27,6 +27,7 @@ Tested with dsh `0.2.0-rc.2` (Web and Desktop) on Linux.
 - **Web search**: see [Web search](#web-search).
 - **Bot browser (dsh Desktop only)**: see [Bot browser](#bot-browser).
 - **GemLogin browsers**: a Bot can drive a real [GemLogin](https://gemlogin.vn) profile (proxy, fingerprint and cookies included) through Puppeteer — see [GemLogin](#gemlogin).
+- **Chromium browsers**: a Bot can drive its own Chromium — the system Chrome/Edge/Chromium, or a downloaded Chrome for Testing when none is installed — see [Chromium](#chromium).
 - **Computer control**: in dsh Desktop a Bot can drive the machine itself — real mouse and keyboard on your screen, with [TypeSafe](https://docs.typesafe.ai/images) vision finding elements by name — see [Computer control](#computer-control).
 - **Images**: for a model that cannot read images, a vision model first turns the image into text.
 - **Secrets**: a Bot asks for an API key or token with a card in its own chat and never sees the value. See [Secrets](#secrets).
@@ -78,6 +79,7 @@ Options go in the profile's `cordis.patch.yml`, under the `bot` entry. All of th
     updateRegistry: https://registry.example/   # ask only this npm registry for updates
     github: false                   # hide the GitHub connector; default shown in Connectors
     gemlogin: http://localhost:1010 # the GemLogin app's local API; false turns the tools off
+    chromium: true                  # chromium_open/close/browse; false turns the tools off, a path forces the binary
     computer: true                  # use_computer (Desktop only); false turns the tool off
     ocrModel: provider/model        # pin one model to read images for every Bot
 ```
@@ -166,11 +168,21 @@ dsh Web has no browser panel and no `read_browser` tool.
 When the [GemLogin](https://gemlogin.vn) app runs on the same machine as the plugin, a Bot can drive one of its profiles as a real browser. Unlike the Bot browser panel — which the user steers — this browser answers to the Bot. The design note is [docs/plans/2026-10-18-gemlogin.md](../docs/plans/2026-10-18-gemlogin.md).
 
 - `gemlogin_profiles` lists profiles and groups; `gemlogin_open` starts a profile through the app's local API (default `http://localhost:1010`) and attaches `puppeteer-core` to the debug address it returns; `gemlogin_close` closes it.
-- `gemlogin_browse` works the open browser: `navigate`, `read` (page text with controls marked `[n]`), `click` and `type` (by `[n]` or a CSS selector), `press`, `scroll`, `tabs`/`use_tab`, `back`/`forward`/`reload`, `wait_for`/`wait`, `screenshot` (saved under `<home>/gemlogin/shots/`) and `evaluate` (JavaScript in the page).
+- `gemlogin_browse` works the open browser: `navigate`, `read` (page text with controls marked `[n]`; a `selector` reads only that part), `click` and `type` (by `[n]` or a CSS selector), `press`, `scroll`, `tabs`/`use_tab`, `back`/`forward`/`reload`, `wait_for`/`wait`, `screenshot` (saved under `<home>/gemlogin/shots/`), `evaluate` (JavaScript in the page) and `steps` — a list of actions run in order in one call, stopping at the first failure, so a known sequence costs one model turn instead of one per action.
 - Profiles open minimized by default (`hidden: false` or `win_pos` overrides) — Windows snaps a fully off-screen window back on, so hidden means on the taskbar, not invisible; pages keep running and rendering either way. The `show` and `hide` actions restore/minimize the window through CDP — `show` when the user asks to watch or must do a step by hand, `hide` to put it back; `hide` remembers the bounds it replaces.
 - A Bot's open GemLogin sessions also show as cards in its Browser tab: a live JPEG preview refreshed every two seconds — the off-screen window still renders through CDP — a Show window / Hide window button, and clicking the picture clicks that spot in the real page. The preview is a frame stream with a click bridge, not an embedded webview: an external Chrome process cannot render inside the panel, and DSH offers no API for that. `click` also takes `x`/`y` viewport pixels for the few spots no ref or selector can point at.
 - A profile belongs to the Bot that opened it: other Bots cannot touch it, a Main Bot can. A connection that dies is reattached on the next action.
 - Proxy credentials in listings and password field values in reads are masked.
+
+## Chromium
+
+A Bot can drive a plain Chromium browser it owns, with no companion app. `chromium_open` resolves the binary in order: the `chromium` config path, a Chrome/Edge/Chromium/Brave installed on the machine, a Chrome for Testing build already under `<home>/chromium/browser/`, or one downloaded there on the spot through `@puppeteer/browsers` (the `stable` channel). The design note is [docs/plans/2026-10-19-chromium.md](../docs/plans/2026-10-19-chromium.md).
+
+- `chromium_open` launches a named session (`default` when unnamed); `chromium_close` closes one or all of the Bot's. Each session keeps a persistent profile directory under `<home>/chromium/profiles/<bot>/<name>` — reopening the same name keeps its cookies and logins. If the browser process dies, the next action relaunches it on the same profile.
+- `chromium_browse` drives the open session with exactly the actions `gemlogin_browse` has — the driving layer is shared (`src/host/browse.js`), screenshots land in `<home>/chromium/shots/`.
+- Sessions open minimized by default (`hidden: false` shows the window, `headless: true` runs with no window at all — `show`/`hide` then report there is no window). `args` passes extra launch flags such as `--proxy-server=…`.
+- A session belongs to the Bot that opened it; other Bots cannot even name it, a Main Bot reaches any as `owner/name`. Open sessions show as the same live preview cards in the Bot's Browser tab.
+- Needs a display for headed sessions; on a display-less host open with `headless: true`. The download path needs access to the public Chrome for Testing CDN.
 
 ## Computer control
 
@@ -270,7 +282,7 @@ dev/check.sh                             # all checks (see below)
 | Path | Purpose |
 |---|---|
 | `index.js` | Host entry: installs the `src/host/` modules in order |
-| `src/host/` | Host: team and storage (`roster`, `store`), tools (`tools`), turns and delivery (`turns`, `delivery`), group chats (`groups`), chat parts, the context steward and the index (`parts`, `steward`, `chat-index`), image text (`images`), secrets (`secrets`), Bot browser (`browser`), GemLogin browsers (`gemlogin`), computer control (`computer`, `computer-driver`), the `POST api/bot` route (`channel`) |
+| `src/host/` | Host: team and storage (`roster`, `store`), tools (`tools`), turns and delivery (`turns`, `delivery`), group chats (`groups`), chat parts, the context steward and the index (`parts`, `steward`, `chat-index`), image text (`images`), secrets (`secrets`), Bot browser (`browser`), GemLogin browsers (`gemlogin`), Bot-driven Chromium (`chromium`), the shared driving layer (`browse`), computer control (`computer`, `computer-driver`), the `POST api/bot` route (`channel`) |
 | `src/client/` | Browser source: sidebar, chat header, transcript cells, panels and dialogs, themes, Bot browser panel |
 | `client.js` | Built from `src/client/` by `scripts/build-client.mjs` (esbuild); committed |
 | `web-search.js` | The `auto` search provider; independent of the team code |

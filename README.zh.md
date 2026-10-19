@@ -76,6 +76,10 @@ ds bot 拥有群聊功能。群聊是非常好的多 bot 协作方式，但它�
 
 当 [GemLogin](https://gemlogin.vn) 应用运行在同一台电脑上时，bot 可以通过 Puppeteer 驱动它的一个 profile 作为真实浏览器——自带代理、指纹和 cookie：打开 profile、读网页、点击、输入和截图，并在 bot 的浏览器标签页里实时预览每个打开的 profile。与由你操作的 bot 浏览器面板不同，这个浏览器听 bot 的。可用 `gemlogin` 选项关闭；详见 [`ds-bot/README.md`](ds-bot/README.md#gemlogin)。
 
+### Chromium 浏览器
+
+不需要任何配套应用，bot 也能驱动一台自己的 Chromium：优先用电脑上已装的 Chrome/Edge/Chromium，都没有就当场下载一个 Chrome for Testing。命名 session 各有持久 profile——重启后 cookie 和登录态还在——浏览器标签页里也有同样的实时预览卡片。可用 `chromium` 选项关闭；详见 [`ds-bot/README.md`](ds-bot/README.md#chromium)。
+
 ### 电脑控制
 
 在 dsh Desktop 中，bot 可以驱动整台机器：通过操作系统的输入注入在你的屏幕上移动真实的鼠标、输入真实的键盘。`screenshot` 把画面拍给它看，`click`/`type`/`key`/`drag`/`scroll` 在屏幕上操作；按名字定位（如「保存按钮」）走 [TypeSafe](https://docs.typesafe.ai/images) 视觉问答，确认元素真的在屏幕上后才会点击；定位过的目标会被记成一个像素点，只要该处画面没变就直接复用。按名字定位需要 `TYPESAFE_API_KEY` 密钥；同一时刻只有一个 bot 驾驶。可用 `computer` 选项关闭；详见 [`ds-bot/README.md`](ds-bot/README.md#computer-control)。
