@@ -40,8 +40,9 @@ DS Bot 的界面是桌面优先的：360–430px 视口下聊天列塌到接近 
 
 - Host 启动时生成 VAPID 密钥对，私钥与订阅都存 `DSH_HOME/bot/push.json`（0600，与 state.json、模型请求隔离）；公钥经 `api/bot` 的 `push-key` 端点下发给客户端。
 - 客户端在「设置 → 本设备」里手动开关：开启时请求通知权限 → `pushManager.subscribe` → 订阅经 `push-subscribe` 端点上报（按 endpoint 去重）；推送返回 404/410 即清掉该订阅。
-- 第一期只推「等用户介入」的事：`ask_user` 提问、权限审批、secret 请求（`rt.pushWait` 在 approvals/tools/secrets 三处挂点，按条目 id 去重）。普通回合完成、普通消息不推。
-- payload 最小化：只有「哪个 Bot + 需要哪类介入 + 条目 id」，不含消息正文——payload 要经过浏览器厂商的 push 服务（FCM / Mozilla autopush），是第三方通道。点通知聚焦或打开应用。
+- 推两类事：「等用户介入」的 `ask_user` 提问、权限审批、secret 请求（`rt.pushWait` 在 approvals/tools/secrets 三处挂点，按条目 id 去重），和普通新消息（`rt.pushNote`）：Bot 在自己私聊里回合结束出了回复推一条 `{Bot} sent a message`（回答别的 Bot 请求的回合不推——回复是路由回发送方的）；Bot 在群里每发一条（`postToRoom`，含进度行、迟到回复、停止/失败通告）推一条 `{成员} in {群名}`。
+- payload 最小化：只有「哪个 Bot/群 + 需要哪类介入或新消息 + 条目 id」，不含消息正文——payload 要经过浏览器厂商的 push 服务（FCM / Mozilla autopush），是第三方通道。点通知聚焦或打开应用。
+- 折叠：SW 用 `ds-bot-{kind}-{id}` 作通知 tag。等待类条目各占一个 tag；消息类 id 取 `chat:{botId}`/`room:{roomId}`，即每个会话一个槽位——新推送覆盖同会话的旧通知，一轮繁忙的群消息在通知栏里只剩最新一条。
 - 发送用 `web-push@3.6.7`（钉死版本）。
 - 推送相关端点（公钥、订阅）一律走 `ctx.connection.fetch.register`（`/api/...`），白拿 Host/Origin fence + 会话 cookie；公开 `webServer.register` 只放 manifest、图标、SW 这类非敏感静态资源。
 
@@ -59,7 +60,7 @@ DS Bot 的界面是桌面优先的：360–430px 视口下聊天列塌到接近 
 ## 不做什么
 
 - 不做原生或套壳 app；不改 DSH。Desktop 端不做 PWA——Electron 本身就是 app。
-- 第一期不推普通消息和回合完成；不做通知分组/折叠。
+- 不推回合完成本身（只推产出了可见回复的回合）；不做通知内容的逐条展开——折叠只到每会话一个槽位。
 - 不做离线编辑和发送队列；离线只读缓存过的界面。
 - 不做滑动手势、下拉刷新。
 - 手机端不做 Bot 浏览器面板：`read_browser` 本来只有 Desktop 有，手机上面板只有 details 视图。
@@ -79,3 +80,4 @@ DS Bot 的界面是桌面优先的：360–430px 视口下聊天列塌到接近 
 - 2026-10-18：实现定稿。与草案的出入：SW 改挂 `/sw.js`（`/ds-bot/` 下 scope 只有 `/ds-bot/`）；meta 用 `webserver/index-inject` 注入行而非 tapIndex（viewport-fit 仍走 tapIndex）；订阅与 VAPID 存 `push.json` 而非 state.json；gate 端口由 `config.pairPort`/`DS_BOT_PAIR_PORT` 控制；推送开关在「设置 → 本设备」，PIN 同时显示在侧栏横幅。已在 test bench 验证 manifest/icon/SW 路由、meta 注入、PIN 端到端与 push 端点。
 - 2026-10-18：gate 代答 dsh token——代理 index 遇 401 时用 `ctx.connection.authenticatedUrl()` 注入 launch token 重试一次，token 不进浏览器；远端登录只剩 PIN 一步。已在真实部署（cloudflared → gate:3080 → dsh:3090 + `--trusted-host`）验证全链路。
 - 2026-10-19：gate cookie 从 `SameSite=Strict` 改 `Lax`：Android 上安装的 WebAPK 冷启动是一次 cross-site 顶层导航，Strict cookie 不随该请求发送，每次回到 app 都被打回 PIN 页；Lax 只在顶层 GET 导航放行，跨站子请求/POST 仍然不带。dsh 自己的 Strict cookie 在同一次冷启动里由 gate 的 token 代答静默续上。已配对设备存的旧 Strict cookie 会在随后的已鉴权响应里重写为 Lax。
+- 2026-10-19：普通新消息开推。发送通道抽成 `rt.pushNote`（`rt.pushWait` 只留「等待条目按 id 去重」语义）；挂点两处：Bot 私聊 `turn/end` 出可见回复（路由回别的 Bot 的回合除外），和群里每条 `postToRoom`。消息通知按 `chat:{botId}`/`room:{roomId}` 作 tag，每会话一个槽位，新通知顶掉旧的。

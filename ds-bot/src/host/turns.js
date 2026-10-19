@@ -644,6 +644,14 @@ export function install(rt) {
             deferred: true,
           }).catch(error => rt.warn('ds-bot: deferred request delivery failed: %s', error))
         }
+        // A reply in a Bot's own chat is a new message for the user, so it
+        // pushes; a turn answering another Bot's request routes its reply to
+        // the sender instead and does not.
+        if (rt.chatOwners.has(id) && !retry && failure === undefined && reason?.kind !== 'aborted'
+          && !(info !== undefined && expectsReply(info) && !answersUser(info))) {
+          const reply = replyText()
+          if (reply !== '') rt.pushNote?.('message', { id: `chat:${rt.chatOwners.get(id)}`, title: `${name} sent a message` })
+        }
         break
       }
     }

@@ -691,6 +691,9 @@ export function install(rt) {
       source: { kind: SOURCE_KIND, form: 'relay', role: 'post', exchangeId: randomUUID(), senderName: sender.name, senderSessionId: sender.id, roomId: room.id, ...extra },
     }))
     await ctx.sessions.flush(agent.session)
+    // Every post is a new group message; they share one notification slot per
+    // group so a busy round shows only the latest.
+    rt.pushNote?.('message', { id: `room:${room.id}`, title: `${sender.name} in ${room.name}` })
   }
   rt.postToRoom = postToRoom
 

@@ -176,16 +176,14 @@ export function install(rt) {
   const dropSub = (endpoint) => {
     if (subscriptions.delete(endpoint)) void persistPush()
   }
-  // A pending item (question card, approval, secret request) pushes once.
-  const noted = new Set()
-  rt.pushWait = (kind, info) => {
-    const key = `${kind}:${info?.id}`
-    if (!PUSH_TITLES[kind] || noted.has(key)) return
-    noted.add(key)
+  // One push. The id doubles as the notification's collapse tag: wait items
+  // carry their own, messages share one per chat or group so a burst of posts
+  // shows only the latest.
+  rt.pushNote = (kind, { id, title, url = './' } = {}) => {
+    if (typeof id !== 'string' || id === '' || typeof title !== 'string' || title === '') return
     void pushReady.then(async () => {
       if (webpush === null) return
-      const name = rt.botOf(info.botId)?.name ?? 'A Bot'
-      const payload = JSON.stringify({ kind, id: info.id, title: PUSH_TITLES[kind](name), url: './' })
+      const payload = JSON.stringify({ kind, id, title, url })
       for (const sub of subscriptions.values()) {
         try {
           await webpush.sendNotification(sub, payload)
@@ -195,6 +193,16 @@ export function install(rt) {
         }
       }
     })
+  }
+
+  // A pending item (question card, approval, secret request) pushes once.
+  const noted = new Set()
+  rt.pushWait = (kind, info) => {
+    const key = `${kind}:${info?.id}`
+    if (!PUSH_TITLES[kind] || noted.has(key)) return
+    noted.add(key)
+    const name = rt.botOf(info.botId)?.name ?? 'A Bot'
+    rt.pushNote(kind, { id: info.id, title: PUSH_TITLES[kind](name) })
   }
 
   rt.pushEndpoint = async (endpoint, body) => {
