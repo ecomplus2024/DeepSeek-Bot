@@ -8,7 +8,7 @@
 // what it says there goes out through zalo_send, never automatically.
 import { randomUUID } from 'node:crypto'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { ROOM_REPLY_TIMEOUT_MS, ZALO_BUFFER_MAX, ZALO_MODES, ZALO_SEND_GAP_MS, ZALO_SEND_MAX, ZALO_SEND_WINDOW_MS, ZALO_WAKE_LINES } from './constants.js'
+import { ROOM_REPLY_TIMEOUT_MS, ZALO_BUFFER_MAX, ZALO_MODES, ZALO_SEND_GAP_MS, ZALO_SEND_MAX, ZALO_SEND_WINDOW_MS, ZALO_WAKE_COOLDOWN_MS, ZALO_WAKE_LINES } from './constants.js'
 import { output } from './tools.js'
 
 const QR_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36'
@@ -41,6 +41,7 @@ export function install(rt) {
   const sessions = new Map()
   const sendQueues = new Map()
   const sentAt = new Map()
+  const lastWake = new Map()
   // At most one QR login at a time: its QR image and progress feed the panel.
   let pending = null
   let stopped = false
@@ -170,8 +171,11 @@ export function install(rt) {
   }
 
   // A `watch` wake informs the Bot; nothing it writes in that turn is relayed.
-  async function wakeWatch(botId, threadId, thread, why, images) {
-    const text = (thread.buffer ?? []).slice(-ZALO_WAKE_LINES).map(line => `${line.from}: ${line.text}`).join('\n')
+  // `trigger` is the buffered line that called — it is marked so the Bot
+  // answers that one, not the chatter around it.
+  async function wakeWatch(botId, threadId, thread, why, images, trigger) {
+    const text = (thread.buffer ?? []).slice(-ZALO_WAKE_LINES)
+      .map(line => `${line.from}: ${line.text}${line === trigger ? '  ⟵ the message that called you' : ''}`).join('\n')
     if (text === '') return
     // Photo links still living in the buffer are pulled again so the wake shows
     // the Bot what it was pinged about; expired links just drop out.
@@ -184,7 +188,7 @@ export function install(rt) {
       role: 'zalo',
       sender: `Zalo "${thread.name ?? threadId}"`,
       exchangeId: randomUUID(),
-      note: `watch ${thread.kind === 'group' ? 'group' : 'chat'} "${thread.name ?? threadId}" · ${why} · speak there only with zalo_send; your reply here is not relayed`,
+      note: `watch ${thread.kind === 'group' ? 'group' : 'chat'} "${thread.name ?? threadId}" · ${why} — the marked line is the only one that needs you; staying silent is fine · speak there only with zalo_send; your reply here is not relayed`,
       text,
       ...(images !== undefined ? { images } : {}),
     }).catch(error => rt.warn('ds-bot: zalo watch delivery failed: %s', error))
@@ -215,9 +219,12 @@ export function install(rt) {
       return talkDeliver(botId, threadId, thread, entry, images)
     }
     const why = wakes(message, team, thread, entry)
-    if (why !== null) {
+    // Mentions inside the cooldown stay in the buffer — the next wake or a
+    // zalo_read still sees them, but the thread cannot nudge the Bot twice.
+    if (why !== null && Date.now() - (lastWake.get(`${botId}:${threadId}`) ?? 0) >= ZALO_WAKE_COOLDOWN_MS) {
+      lastWake.set(`${botId}:${threadId}`, Date.now())
       const images = await imageAttachment(message).then(file => file === undefined ? undefined : [file])
-      await wakeWatch(botId, threadId, thread, why, images)
+      await wakeWatch(botId, threadId, thread, why, images, entry)
     }
   }
 

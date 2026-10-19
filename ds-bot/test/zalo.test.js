@@ -220,6 +220,26 @@ test('a watch thread buffers quietly, wakes on a mention, and never relays the r
   assert.equal(api.sent.length, 0)
 })
 
+test('a watch thread wakes at most once per cooldown and marks the calling line', async (t) => {
+  const { call, delivered, api, stop } = start()
+  t.after(stop)
+  await linked(call, api)
+  await call('zalo-thread-mode', { botId: 'm1', threadId: 'g1', kind: 'group', name: 'Team Chat', mode: 'watch', keywords: [] })
+
+  api.emit(inbound('g1', '@Shop Bot first ping'))
+  const wake = await waitFor(() => delivered.find(entry => entry.sessionId === 'm1'))
+  assert.ok(wake !== undefined, 'mention did not wake the Bot')
+  assert.match(wake.message.content[0].text, /first ping {2}⟵ the message that called you/)
+  assert.match(wake.message.content[0].text, /staying silent is fine/)
+
+  // A second mention inside the cooldown only buffers; it does not nudge again.
+  api.emit(inbound('g1', '@Shop Bot second ping'))
+  await settle(); await settle()
+  assert.equal(delivered.filter(entry => entry.sessionId === 'm1').length, 1)
+  const state = await status(call)
+  assert.equal(state.bots.m1.threads.g1.buffered, 2)
+})
+
 test('self messages and unconfigured threads are ignored', async (t) => {
   const { call, delivered, api, stop } = start()
   t.after(stop)
