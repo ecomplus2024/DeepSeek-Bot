@@ -86,6 +86,14 @@ function gateCookie(secret) {
   const body = b64url(JSON.stringify({ v: 1, iat: Date.now(), exp: Date.now() + GATE_COOKIE_TTL_MS }))
   return `v1.${body}.${b64url(sign(secret, body))}`
 }
+// SameSite=Lax, not Strict: a cold launch of an installed Android web app is a
+// cross-site top-level navigation, so a Strict cookie never leaves the jar and
+// the PIN form would greet every return to the app. Lax still withholds it from
+// every cross-site request that is not that navigation.
+function gateSetCookie(secret) {
+  const expiry = new Date(Date.now() + GATE_COOKIE_TTL_MS).toUTCString()
+  return `${GATE_COOKIE}=${gateCookie(secret)}; Max-Age=${Math.floor(GATE_COOKIE_TTL_MS / 1000)}; Path=/; Expires=${expiry}; HttpOnly; SameSite=Lax`
+}
 function gateCookieValid(secret, value) {
   const [version, body, signature] = String(value ?? '').split('.')
   if (version !== 'v1' || !body || !signature) return false
@@ -295,10 +303,9 @@ export function install(rt) {
         req.on('end', () => {
           const fields = new URLSearchParams(Buffer.concat(chunks).toString('utf8'))
           if (tryPin(fields.get('pin'))) {
-            const expiry = new Date(Date.now() + GATE_COOKIE_TTL_MS).toUTCString()
             res.writeHead(303, {
               location: safeNext(fields.get('next')),
-              'set-cookie': `${GATE_COOKIE}=${gateCookie(gate.secret)}; Max-Age=${Math.floor(GATE_COOKIE_TTL_MS / 1000)}; Path=/; Expires=${expiry}; HttpOnly; SameSite=Strict`,
+              'set-cookie': gateSetCookie(gate.secret),
             })
             res.end()
           } else {
@@ -309,7 +316,8 @@ export function install(rt) {
         })
         return
       }
-      if (!local(req) && !authed(req) && !publicAsset(url.pathname)) {
+      const paired = authed(req)
+      if (!local(req) && !paired && !publicAsset(url.pathname)) {
         // The form keeps the original URL in `next`, so a shared ?token= link
         // lands on the real dsh auth right after pairing.
         if (req.method === 'GET' || req.method === 'HEAD') form(res, 401, undefined, safeNext(req.url))
@@ -335,6 +343,9 @@ export function install(rt) {
               pipe(url.pathname + url.search, true)
               return
             }
+            // Devices paired while the cookie was Strict keep that attribute
+            // until it is rewritten, so authed responses carry a fresh one.
+            if (paired) reply.headers['set-cookie'] = [].concat(reply.headers['set-cookie'] ?? [], gateSetCookie(gate.secret))
             res.writeHead(reply.statusCode ?? 502, reply.headers)
             reply.pipe(res)
           },
