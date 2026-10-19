@@ -10,7 +10,7 @@ import { join } from 'node:path'
 import puppeteer from 'puppeteer-core'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { output } from './tools.js'
-import { HIDDEN_POS, createPageDriver, fail, pickPage, registerBrowseTool, setWindowShown } from './browse.js'
+import { HIDDEN_POS, createPageDriver, fail, pageSize, pickPage, registerBrowseTool, setWindowShown } from './browse.js'
 
 export { extractPage, setWindowShown } from './browse.js'
 
@@ -95,7 +95,9 @@ export function createGemSessions({ api, connect = options => puppeteer.connect(
     }
     const addr = started?.remote_debugging_address
     if (typeof addr !== 'string' || addr === '') throw new Error(`GemLogin started profile #${profile.id} but returned no debug address`)
-    const browser = await connect({ browserURL: /^https?:/.test(addr) ? addr : `http://${addr}` })
+    // null keeps puppeteer's 800x600 viewport emulation off the profile's real
+    // window; GemLogin browsers are always headed.
+    const browser = await connect({ browserURL: /^https?:/.test(addr) ? addr : `http://${addr}`, defaultViewport: null })
     const session = { id: String(profile.id), name: profile.name, owner, browser, page: undefined, reads: 0, addr }
     await pickPage(session)
     return session
@@ -306,8 +308,8 @@ export function install(rt) {
     try {
       const page = await sessions.pageOf(session)
       const image = await page.screenshot({ type: 'jpeg', quality: 60 })
-      const viewport = page.viewport() ?? {}
-      return { image: `data:image/jpeg;base64,${image.toString('base64')}`, title: await page.title(), url: page.url(), hidden: session.hidden === true, width: viewport.width, height: viewport.height }
+      const { width, height } = await pageSize(page)
+      return { image: `data:image/jpeg;base64,${image.toString('base64')}`, title: await page.title(), url: page.url(), hidden: session.hidden === true, width, height }
     } catch { return { image: null } }
   }
 
@@ -317,7 +319,7 @@ export function install(rt) {
     const session = sessions.get(profileId)
     if (session === undefined || session.owner !== botId || typeof fx !== 'number' || typeof fy !== 'number') return { ok: false }
     const page = await sessions.pageOf(session)
-    const { width = 1280, height = 800 } = page.viewport() ?? {}
+    const { width = 1280, height = 800 } = await pageSize(page)
     await page.mouse.click(Math.round(fx * width), Math.round(fy * height))
     return { ok: true }
   }

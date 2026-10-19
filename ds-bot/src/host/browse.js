@@ -77,6 +77,9 @@ export function extractPage(tag, selector) {
   }
 }
 
+// A headed window has no emulated viewport, so its size is read from the page.
+export const pageSize = async (page) => page.viewport() ?? await page.evaluate(() => ({ width: innerWidth, height: innerHeight })).catch(() => ({}))
+
 // The tab a session drives: the kept one while it lives, else the first real page.
 export const pickPage = async (session) => {
   if (session.page !== undefined && !session.page.isClosed()) return session.page

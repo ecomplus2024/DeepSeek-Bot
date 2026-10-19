@@ -13,7 +13,7 @@ import puppeteer from 'puppeteer-core'
 import { Browser, detectBrowserPlatform, getInstalledBrowsers, install as installBrowser, resolveBuildId } from '@puppeteer/browsers'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { output } from './tools.js'
-import { HIDDEN_POS, createPageDriver, fail, pickPage, registerBrowseTool, setWindowShown } from './browse.js'
+import { HIDDEN_POS, createPageDriver, fail, pageSize, pickPage, registerBrowseTool, setWindowShown } from './browse.js'
 
 const NAME_MAX = 40
 const CHROME_TAG = 'stable'
@@ -322,9 +322,6 @@ export function install(rt) {
     caller,
     denied: 'Only Bots on the team can drive a Chromium browser.',
   })
-
-  // A headed window has no emulated viewport, so its size is read from the page.
-  const pageSize = async (page) => page.viewport() ?? await page.evaluate(() => ({ width: innerWidth, height: innerHeight })).catch(() => ({}))
 
   // The client's view of the sessions a Bot owns — same shape as the GemLogin cards.
   const chromiumList = async (botId) => Promise.all(sessions.list().filter(session => session.owner === botId).map(async (session) => {
