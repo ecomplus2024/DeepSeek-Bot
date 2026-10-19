@@ -110,6 +110,9 @@ export function createChromiumSessions({ launch = options => puppeteer.launch(op
       executablePath: session.executablePath,
       headless: session.headless === true,
       userDataDir: session.userDataDir,
+      // Puppeteer's default viewport is an 800x600 emulation; a headed window
+      // follows its real size instead, while headless keeps a steady one.
+      defaultViewport: session.headless === true ? { width: 1280, height: 800 } : null,
       args,
     })
     session.page = undefined
@@ -320,6 +323,9 @@ export function install(rt) {
     denied: 'Only Bots on the team can drive a Chromium browser.',
   })
 
+  // A headed window has no emulated viewport, so its size is read from the page.
+  const pageSize = async (page) => page.viewport() ?? await page.evaluate(() => ({ width: innerWidth, height: innerHeight })).catch(() => ({}))
+
   // The client's view of the sessions a Bot owns — same shape as the GemLogin cards.
   const chromiumList = async (botId) => Promise.all(sessions.list().filter(session => session.owner === botId).map(async (session) => {
     let title = '', url = ''
@@ -342,8 +348,8 @@ export function install(rt) {
     try {
       const page = await sessions.pageOf(session)
       const image = await page.screenshot({ type: 'jpeg', quality: 60 })
-      const viewport = page.viewport() ?? {}
-      return { image: `data:image/jpeg;base64,${image.toString('base64')}`, title: await page.title(), url: page.url(), hidden: session.hidden === true, width: viewport.width, height: viewport.height }
+      const { width, height } = await pageSize(page)
+      return { image: `data:image/jpeg;base64,${image.toString('base64')}`, title: await page.title(), url: page.url(), hidden: session.hidden === true, width, height }
     } catch { return { image: null } }
   }
 
@@ -351,7 +357,7 @@ export function install(rt) {
     const session = sessions.get(id)
     if (session === undefined || session.owner !== botId || typeof fx !== 'number' || typeof fy !== 'number') return { ok: false }
     const page = await sessions.pageOf(session)
-    const { width = 1280, height = 800 } = page.viewport() ?? {}
+    const { width = 1280, height = 800 } = await pageSize(page)
     await page.mouse.click(Math.round(fx * width), Math.round(fy * height))
     return { ok: true }
   }
