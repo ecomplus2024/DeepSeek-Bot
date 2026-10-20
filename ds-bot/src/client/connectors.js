@@ -98,10 +98,12 @@ function ThreadRow({ botId, thread, actions }) {
     h('span', { className: 'bt-zalo-thread-name', title: thread.id },
       thread.name || thread.id,
       h('span', { className: 'bt-zalo-kind' }, thread.kind === 'group' ? t('group') : t('direct'))),
-    h('select', {
-      className: 'bt-select bt-zalo-mode', value: mode, disabled: busy,
-      onChange: event => save({ mode: event.target.value, keywords: keywords.split(',').map(word => word.trim()).filter(word => word !== '') }),
-    }, ZALO_MODES.map(value => h('option', { key: value, value }, modeLabel[value]()))),
+    thread.owner !== undefined
+      ? h('span', { className: 'bt-set-hint' }, t('followed by {name}', { name: thread.owner }))
+      : h('select', {
+          className: 'bt-select bt-zalo-mode', value: mode, disabled: busy,
+          onChange: event => save({ mode: event.target.value, keywords: keywords.split(',').map(word => word.trim()).filter(word => word !== '') }),
+        }, ZALO_MODES.map(value => h('option', { key: value, value }, modeLabel[value]()))),
     mode === 'watch'
       ? h('input', {
           className: 'bt-input bt-zalo-keys', value: keywords, disabled: busy,
@@ -115,7 +117,7 @@ function ThreadRow({ botId, thread, actions }) {
 
 const THREADS_PAGE = 50
 
-function ZaloBound({ bot, entry, actions }) {
+function ZaloBound({ bot, entry, shared, actions }) {
   const [open, setOpen] = useState(false)
   const [threads, setThreads] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -157,7 +159,7 @@ function ZaloBound({ bot, entry, actions }) {
       h('span', { className: 'bt-connector-mark' }, h(ZaloMark)),
       h('span', { className: 'bt-connector-text' },
         h('span', { className: 'bt-connector-name' }, t('Zalo · {bot}', { bot: bot.name })),
-        h('span', { className: 'bt-connector-status' }, zaloStatus(entry))),
+        h('span', { className: 'bt-connector-status' }, `${zaloStatus(entry)}${shared ? ` · ${t('shared')}` : ''}`)),
       h('span', { className: 'bt-connector-actions' },
         entry.state === 'off' || entry.state === 'error'
           ? h('button', { type: 'button', className: 'bt-soft bt-soft-sm', disabled: busy, onClick: () => { setBusy(true); actions.zaloReconnect(bot.id).catch(failure => setError(failure?.message ?? String(failure))).finally(() => setBusy(false)) } }, t('Reconnect'))
@@ -189,10 +191,14 @@ function ZaloBound({ bot, entry, actions }) {
 
 function ZaloConnect({ roster, actions, login }) {
   const unbound = (roster?.bots ?? []).filter(bot => roster?.zalo?.bots?.[bot.id]?.account === undefined || roster?.zalo?.bots?.[bot.id]?.account === null)
+  // Accounts another Bot already signed into can be shared, no second scan.
+  const accounts = roster?.zalo?.accounts ?? []
   const [botId, setBotId] = useState('')
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
   const picked = botId || unbound[0]?.id || ''
-  const start = () => { if (picked !== '') { setBusy(true); actions.zaloStart(picked).finally(() => setBusy(false)) } }
+  const start = () => { if (picked !== '') { setBusy(true); setError(null); actions.zaloStart(picked).catch(failure => setError(failure?.message ?? String(failure))).finally(() => setBusy(false)) } }
+  const bind = (uid) => { if (picked !== '') { setBusy(true); setError(null); actions.zaloBind(picked, uid).catch(failure => setError(failure?.message ?? String(failure))).finally(() => setBusy(false)) } }
   return h('div', { className: 'bt-connector', 'data-state': 'off' },
     h('div', { className: 'bt-connector-head' },
       h('span', { className: 'bt-connector-mark' }, h(ZaloMark)),
@@ -205,8 +211,14 @@ function ZaloConnect({ roster, actions, login }) {
               unbound.map(bot => h('option', { key: bot.id, value: bot.id }, bot.name)))
           : null,
         login === null
-          ? h('button', { type: 'button', className: 'bt-soft bt-soft-sm', disabled: busy || unbound.length === 0, onClick: start },
-              busy ? t('Connecting…') : t('Connect'))
+          ? [
+              ...accounts.map(account => h('button', {
+                key: account.uid, type: 'button', className: 'bt-soft bt-soft-sm', disabled: busy || unbound.length === 0,
+                title: t('Share this account, no new QR scan'), onClick: () => bind(account.uid),
+              }, t('Use {name}', { name: account.name || account.uid }))),
+              h('button', { key: 'qr', type: 'button', className: 'bt-soft bt-soft-sm', disabled: busy || unbound.length === 0, onClick: start },
+                busy ? t('Connecting…') : t('Connect')),
+            ]
           : h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: () => void actions.zaloCancel() }, t('Cancel')))),
     login !== null && login.phase === 'qr' ? h('div', { className: 'bt-zalo-qr-box' },
       login.qr !== null && login.qr !== undefined
@@ -217,19 +229,24 @@ function ZaloConnect({ roster, actions, login }) {
       h('span', { className: 'bt-set-hint' }, t('Scanned{name} — confirm on your phone', { name: login.name ? ` (${login.name})` : '' }))) : null,
     login !== null && (login.phase === 'expired' || login.phase === 'error') ? h('div', { className: 'bt-zalo-qr-box' },
       h('span', { className: 'bt-connector-error', role: 'alert' }, login.phase === 'expired' ? t('The QR code expired; try again') : (login.error ?? t('Login failed'))),
-      h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: start }, t('Try again'))) : null)
+      h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: start }, t('Try again'))) : null,
+    error ? h('div', { className: 'bt-connector-error', role: 'alert' }, error) : null)
 }
 
-// The Zalo card: one bound account per Bot, QR sign-in, and per-thread modes.
+// The Zalo card: one account per Bot — or a shared one several Bots follow
+// different threads of — QR sign-in, and per-thread modes.
 export function ZaloCard({ roster, actions }) {
-  const zalo = roster?.zalo ?? { bots: {}, login: null }
+  const zalo = roster?.zalo ?? { bots: {}, accounts: [], login: null }
   const bots = roster?.bots ?? []
   const bound = bots.filter(bot => zalo.bots?.[bot.id]?.account !== undefined && zalo.bots?.[bot.id]?.account !== null)
   const login = zalo.login ?? null
   // An unbound card stays for the pending login even when every Bot is bound.
   const showConnect = login !== null || bound.length < bots.length
   return h('div', { className: 'bt-set-card bt-connectors-card bt-zalo-card' },
-    bound.map(bot => h(ZaloBound, { key: bot.id, bot, entry: zalo.bots[bot.id], actions })),
+    bound.map(bot => h(ZaloBound, {
+      key: bot.id, bot, entry: zalo.bots[bot.id], actions,
+      shared: (zalo.accounts ?? []).find(account => account.uid === zalo.bots[bot.id]?.account?.uid)?.bots.length > 1,
+    })),
     showConnect ? h(ZaloConnect, { roster, actions, login }) : null,
     bound.length === 0 && !showConnect ? h('div', { className: 'bt-set-row' }, h('span', { className: 'bt-set-hint' }, t('No Bots to link'))) : null)
 }

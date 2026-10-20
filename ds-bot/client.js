@@ -168,6 +168,10 @@ var ZH = {
   "No Bots to link": "没有可绑定的 Bot",
   "Reconnect": "重新连接",
   "Search threads": "搜索会话",
+  "Use {name}": "使用 {name}",
+  "Share this account, no new QR scan": "共用此账号，无需重新扫码",
+  "followed by {name}": "{name} 正在关注",
+  "shared": "共用",
   "Search threads…": "搜索会话…",
   "No threads match": "没有匹配的会话",
   "Show {count} more": "再显示 {count} 条",
@@ -1147,6 +1151,10 @@ var VI = {
   "No Bots to link": "Không có Bot nào để liên kết",
   "Reconnect": "Kết nối lại",
   "Search threads": "Tìm hội thoại",
+  "Use {name}": "Dùng {name}",
+  "Share this account, no new QR scan": "Dùng chung tài khoản này, không cần quét QR mới",
+  "followed by {name}": "{name} đang theo dõi",
+  "shared": "dùng chung",
   "Search threads…": "Tìm hội thoại…",
   "No threads match": "Không có hội thoại khớp",
   "Show {count} more": "Hiện thêm {count}",
@@ -2317,7 +2325,7 @@ function createSource(initial) {
     }
   };
 }
-var EMPTY_ROSTER = { revision: -1, mainBotId: null, mainBotIds: [], bots: [], rooms: [], agents: [], exchangeTurns: {}, questions: {}, secrets: [], capabilities: [], capabilityStatuses: {}, secretRequests: {}, models: [], defaultModel: null, modelsKey: null, prefs: {}, zalo: { bots: {}, login: null }, pair: { enabled: false }, byId: {}, roomsById: {}, agentsById: {}, agentOf: {}, ready: false };
+var EMPTY_ROSTER = { revision: -1, mainBotId: null, mainBotIds: [], bots: [], rooms: [], agents: [], exchangeTurns: {}, questions: {}, secrets: [], capabilities: [], capabilityStatuses: {}, secretRequests: {}, models: [], defaultModel: null, modelsKey: null, prefs: {}, zalo: { bots: {}, accounts: [], login: null }, pair: { enabled: false }, byId: {}, roomsById: {}, agentsById: {}, agentOf: {}, ready: false };
 var isMainOf = (roster, id) => id !== void 0 && (roster.mainBotIds ?? []).includes(id);
 function indexRoster(value) {
   const byId = {};
@@ -11768,7 +11776,7 @@ function ThreadRow({ botId, thread, actions }) {
       thread.name || thread.id,
       (0, import_react28.createElement)("span", { className: "bt-zalo-kind" }, thread.kind === "group" ? t("group") : t("direct"))
     ),
-    (0, import_react28.createElement)("select", {
+    thread.owner !== void 0 ? (0, import_react28.createElement)("span", { className: "bt-set-hint" }, t("followed by {name}", { name: thread.owner })) : (0, import_react28.createElement)("select", {
       className: "bt-select bt-zalo-mode",
       value: mode,
       disabled: busy,
@@ -11786,7 +11794,7 @@ function ThreadRow({ botId, thread, actions }) {
   );
 }
 var THREADS_PAGE = 50;
-function ZaloBound({ bot, entry, actions }) {
+function ZaloBound({ bot, entry, shared: shared2, actions }) {
   const [open, setOpen] = (0, import_react28.useState)(false);
   const [threads, setThreads] = (0, import_react28.useState)(null);
   const [busy, setBusy] = (0, import_react28.useState)(false);
@@ -11832,7 +11840,7 @@ function ZaloBound({ bot, entry, actions }) {
         "span",
         { className: "bt-connector-text" },
         (0, import_react28.createElement)("span", { className: "bt-connector-name" }, t("Zalo · {bot}", { bot: bot.name })),
-        (0, import_react28.createElement)("span", { className: "bt-connector-status" }, zaloStatus(entry))
+        (0, import_react28.createElement)("span", { className: "bt-connector-status" }, `${zaloStatus(entry)}${shared2 ? ` · ${t("shared")}` : ""}`)
       ),
       (0, import_react28.createElement)(
         "span",
@@ -11880,13 +11888,23 @@ function ZaloBound({ bot, entry, actions }) {
 }
 function ZaloConnect({ roster, actions, login }) {
   const unbound = (roster?.bots ?? []).filter((bot) => roster?.zalo?.bots?.[bot.id]?.account === void 0 || roster?.zalo?.bots?.[bot.id]?.account === null);
+  const accounts = roster?.zalo?.accounts ?? [];
   const [botId, setBotId] = (0, import_react28.useState)("");
   const [busy, setBusy] = (0, import_react28.useState)(false);
+  const [error, setError] = (0, import_react28.useState)(null);
   const picked = botId || unbound[0]?.id || "";
   const start = () => {
     if (picked !== "") {
       setBusy(true);
-      actions.zaloStart(picked).finally(() => setBusy(false));
+      setError(null);
+      actions.zaloStart(picked).catch((failure) => setError(failure?.message ?? String(failure))).finally(() => setBusy(false));
+    }
+  };
+  const bind = (uid) => {
+    if (picked !== "") {
+      setBusy(true);
+      setError(null);
+      actions.zaloBind(picked, uid).catch((failure) => setError(failure?.message ?? String(failure))).finally(() => setBusy(false));
     }
   };
   return (0, import_react28.createElement)(
@@ -11910,11 +11928,21 @@ function ZaloConnect({ roster, actions, login }) {
           { className: "bt-select bt-zalo-bot", value: picked, onChange: (event) => setBotId(event.target.value) },
           unbound.map((bot) => (0, import_react28.createElement)("option", { key: bot.id, value: bot.id }, bot.name))
         ) : null,
-        login === null ? (0, import_react28.createElement)(
-          "button",
-          { type: "button", className: "bt-soft bt-soft-sm", disabled: busy || unbound.length === 0, onClick: start },
-          busy ? t("Connecting…") : t("Connect")
-        ) : (0, import_react28.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", onClick: () => void actions.zaloCancel() }, t("Cancel"))
+        login === null ? [
+          ...accounts.map((account) => (0, import_react28.createElement)("button", {
+            key: account.uid,
+            type: "button",
+            className: "bt-soft bt-soft-sm",
+            disabled: busy || unbound.length === 0,
+            title: t("Share this account, no new QR scan"),
+            onClick: () => bind(account.uid)
+          }, t("Use {name}", { name: account.name || account.uid }))),
+          (0, import_react28.createElement)(
+            "button",
+            { key: "qr", type: "button", className: "bt-soft bt-soft-sm", disabled: busy || unbound.length === 0, onClick: start },
+            busy ? t("Connecting…") : t("Connect")
+          )
+        ] : (0, import_react28.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", onClick: () => void actions.zaloCancel() }, t("Cancel"))
       )
     ),
     login !== null && login.phase === "qr" ? (0, import_react28.createElement)(
@@ -11933,11 +11961,12 @@ function ZaloConnect({ roster, actions, login }) {
       { className: "bt-zalo-qr-box" },
       (0, import_react28.createElement)("span", { className: "bt-connector-error", role: "alert" }, login.phase === "expired" ? t("The QR code expired; try again") : login.error ?? t("Login failed")),
       (0, import_react28.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", onClick: start }, t("Try again"))
-    ) : null
+    ) : null,
+    error ? (0, import_react28.createElement)("div", { className: "bt-connector-error", role: "alert" }, error) : null
   );
 }
 function ZaloCard({ roster, actions }) {
-  const zalo = roster?.zalo ?? { bots: {}, login: null };
+  const zalo = roster?.zalo ?? { bots: {}, accounts: [], login: null };
   const bots = roster?.bots ?? [];
   const bound2 = bots.filter((bot) => zalo.bots?.[bot.id]?.account !== void 0 && zalo.bots?.[bot.id]?.account !== null);
   const login = zalo.login ?? null;
@@ -11945,7 +11974,13 @@ function ZaloCard({ roster, actions }) {
   return (0, import_react28.createElement)(
     "div",
     { className: "bt-set-card bt-connectors-card bt-zalo-card" },
-    bound2.map((bot) => (0, import_react28.createElement)(ZaloBound, { key: bot.id, bot, entry: zalo.bots[bot.id], actions })),
+    bound2.map((bot) => (0, import_react28.createElement)(ZaloBound, {
+      key: bot.id,
+      bot,
+      entry: zalo.bots[bot.id],
+      actions,
+      shared: (zalo.accounts ?? []).find((account) => account.uid === zalo.bots[bot.id]?.account?.uid)?.bots.length > 1
+    })),
     showConnect ? (0, import_react28.createElement)(ZaloConnect, { roster, actions, login }) : null,
     bound2.length === 0 && !showConnect ? (0, import_react28.createElement)("div", { className: "bt-set-row" }, (0, import_react28.createElement)("span", { className: "bt-set-hint" }, t("No Bots to link"))) : null
   );
@@ -15765,6 +15800,7 @@ function apply(ctx) {
     zaloCancel: () => after(call("zalo-cancel")),
     zaloLogout: (botId) => after(call("zalo-logout", { botId })),
     zaloReconnect: (botId) => after(call("zalo-reconnect", { botId })),
+    zaloBind: (botId, uid) => after(call("zalo-bind", { botId, uid })),
     zaloThreads: (botId) => call("zalo-threads", { botId }),
     zaloThreadMode: (botId, thread) => after(call("zalo-thread-mode", { botId, ...thread })),
     saveCapability: (capability) => after(call("capability-save", capability)),

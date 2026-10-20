@@ -566,6 +566,7 @@ export function apply(ctx) {
     zaloCancel: () => after(call('zalo-cancel')),
     zaloLogout: botId => after(call('zalo-logout', { botId })),
     zaloReconnect: botId => after(call('zalo-reconnect', { botId })),
+    zaloBind: (botId, uid) => after(call('zalo-bind', { botId, uid })),
     zaloThreads: botId => call('zalo-threads', { botId }),
     zaloThreadMode: (botId, thread) => after(call('zalo-thread-mode', { botId, ...thread })),
     saveCapability: capability => after(call('capability-save', capability)),

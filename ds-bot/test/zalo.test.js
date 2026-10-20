@@ -63,10 +63,20 @@ const TEAM = {
   questions: {},
 }
 
-function start({ lib } = {}) {
+const TEAM2 = {
+  ...TEAM,
+  mainBotIds: ['m1', 'b2'],
+  bots: {
+    m1: { id: 'm1', sessionId: 'm1', name: 'Chief', role: 'Chief of Staff', instructions: '', createdAt: 1 },
+    b2: { id: 'b2', sessionId: 'b2', name: 'Sidekick', role: 'Helper', instructions: '', createdAt: 2 },
+  },
+}
+
+function start({ lib, team, secrets } = {}) {
   const zalo = fakeZalo()
   const home = mkdtempSync(join(tmpdir(), 'ds-bot-zalo-'))
-  writeFileSync(join(home, 'state.json'), JSON.stringify(TEAM))
+  writeFileSync(join(home, 'state.json'), JSON.stringify(team ?? TEAM))
+  if (secrets !== undefined) writeFileSync(join(home, 'secrets.json'), JSON.stringify({ version: 1, secrets }))
   const ctx = fakeContext({ services: { attachments: fakeAttachments() } })
   const delivered = []
   Object.assign(ctx, {
@@ -164,10 +174,10 @@ test('QR login links the account, stores the session as a secret, and starts lis
   // already the live one — at most one credential login may race in.
   assert.ok(api.logins.length <= 1, String(api.logins.length))
 
-  // The session went into secrets.json under the Bot's name, never into state.json.
+  // The session went into secrets.json under the account's name, never into state.json.
   const secrets = JSON.parse(readFileSync(join(home, 'secrets.json'), 'utf8'))
   const names = (secrets.secrets ?? []).map(entry => entry.name)
-  assert.ok(names.some(name => name.startsWith('ZALO_SESSION')), JSON.stringify(names))
+  assert.ok(names.some(name => name.startsWith('ZALO_ACCOUNT')), JSON.stringify(names))
   assert.ok(!readFileSync(join(home, 'state.json'), 'utf8').includes('userAgent'))
 })
 
@@ -341,7 +351,7 @@ test('zalo-threads lists friends and groups; logout clears the account and its s
   assert.equal(off.value.bots.m1.account, null)
   assert.equal(off.value.bots.m1.state, 'off')
   const secrets = JSON.parse(readFileSync(join(home, 'secrets.json'), 'utf8'))
-  assert.ok(!(secrets.secrets ?? []).some(entry => entry.name.startsWith('ZALO_SESSION')))
+  assert.ok(!(secrets.secrets ?? []).some(entry => entry.name.startsWith('ZALO_ACCOUNT') || entry.name.startsWith('ZALO_SESSION')))
 })
 
 test('a canceled QR login leaves no account and no session', async (t) => {
@@ -368,4 +378,95 @@ test('a canceled QR login leaves no account and no session', async (t) => {
   assert.equal(live.bots.m1?.account ?? null, null)
   assert.equal(live.login, null)
   assert.equal(api.listener.started, false)
+})
+
+test('a second Bot binds a logged-in account without a new QR scan', async (t) => {
+  const { call, api, stop } = start({ team: TEAM2 })
+  t.after(stop)
+  await linked(call, api)
+  const logins = api.logins.length
+
+  const bound = await call('zalo-bind', { botId: 'b2', uid: 'z-uid-1' })
+  assert.equal(bound.ok, true, JSON.stringify(bound))
+  assert.deepEqual(bound.value.bots.b2.account, { uid: 'z-uid-1', name: 'Shop Bot' })
+  // One listener still serves both Bots: no second login happened.
+  assert.equal(api.logins.length, logins)
+  const account = bound.value.accounts.find(entry => entry.uid === 'z-uid-1')
+  assert.deepEqual(account.bots.sort(), ['b2', 'm1'])
+  assert.equal(account.state, 'ready')
+
+  // A bound Bot cannot bind again; a made-up uid cannot be bound.
+  const again = await call('zalo-bind', { botId: 'b2', uid: 'z-uid-1' })
+  assert.equal(again.ok, false)
+  const none = await call('zalo-bind', { botId: 'm1', uid: 'nobody' })
+  assert.equal(none.ok, false)
+})
+
+test('on a shared account each thread has one owner and goes to its Bot', async (t) => {
+  const { call, delivered, api, stop } = start({ team: TEAM2 })
+  t.after(stop)
+  await linked(call, api)
+  await call('zalo-bind', { botId: 'b2', uid: 'z-uid-1' })
+  await call('zalo-thread-mode', { botId: 'b2', threadId: 'u-minh', kind: 'user', name: 'Minh', mode: 'talk' })
+  await call('zalo-thread-mode', { botId: 'm1', threadId: 'g1', kind: 'group', name: 'Team Chat', mode: 'talk' })
+
+  // Minh's direct chat belongs to b2; the group belongs to m1.
+  api.emit(inbound('u-minh', 'hello'))
+  const own = await waitFor(() => delivered.find(entry => entry.sessionId === 'b2'))
+  assert.ok(own !== undefined, 'the owner Bot got nothing')
+  assert.equal(delivered.some(entry => entry.sessionId === 'm1'), false)
+
+  api.emit(inbound('g1', 'group ping'))
+  const other = await waitFor(() => delivered.find(entry => entry.sessionId === 'm1'))
+  assert.ok(other !== undefined, 'the group owner got nothing')
+
+  // m1 cannot take over b2's thread, and the picker marks it as taken.
+  const taken = await call('zalo-thread-mode', { botId: 'm1', threadId: 'u-minh', kind: 'user', name: 'Minh', mode: 'talk' })
+  assert.equal(taken.ok, false)
+  assert.match(taken.error?.message ?? '', /already followed by Sidekick/)
+  const list = await call('zalo-threads', { botId: 'm1' })
+  assert.equal(list.value.users.find(thread => thread.id === 'u-minh')?.owner, 'Sidekick')
+})
+
+test('a shared account stays connected until its last Bot logs out', async (t) => {
+  const { call, home, api, stop } = start({ team: TEAM2 })
+  t.after(stop)
+  await linked(call, api)
+  await call('zalo-bind', { botId: 'b2', uid: 'z-uid-1' })
+
+  const off = await call('zalo-logout', { botId: 'm1' })
+  assert.equal(off.ok, true, JSON.stringify(off))
+  assert.equal(off.value.bots.m1.account, null)
+  // b2 still uses the account: listener and secret stay.
+  assert.equal(off.value.bots.b2.state, 'ready')
+  assert.equal(api.listener.started, true)
+  let secrets = JSON.parse(readFileSync(join(home, 'secrets.json'), 'utf8'))
+  assert.ok((secrets.secrets ?? []).some(entry => entry.name === 'ZALO_ACCOUNT_Z_UID_1'))
+
+  const last = await call('zalo-logout', { botId: 'b2' })
+  assert.equal(last.ok, true, JSON.stringify(last))
+  assert.equal(last.value.bots.b2.state, 'off')
+  secrets = JSON.parse(readFileSync(join(home, 'secrets.json'), 'utf8'))
+  assert.ok(!(secrets.secrets ?? []).some(entry => entry.name === 'ZALO_ACCOUNT_Z_UID_1'))
+})
+
+test('a saved per-Bot secret moves to the account name on reconnect', async (t) => {
+  const { call, home, api, stop } = start({
+    team: { ...TEAM, zalo: { m1: { account: { uid: 'z-uid-1', name: 'Shop Bot' }, threads: {} } } },
+    secrets: [{ name: 'ZALO_SESSION_M1', value: '{"cookie":"c","imei":"i","userAgent":"ua"}', purpose: 'Zalo session', scope: [], createdAt: 1, updatedAt: 1 }],
+  })
+  t.after(stop)
+
+  const live = await waitFor(async () => {
+    const value = await status(call)
+    return value.bots.m1?.state === 'ready' ? value : undefined
+  })
+  assert.ok(live !== undefined, 'the saved session did not reconnect')
+  const moved = await waitFor(async () => {
+    const secrets = JSON.parse(readFileSync(join(home, 'secrets.json'), 'utf8'))
+    const names = (secrets.secrets ?? []).map(entry => entry.name)
+    return names.includes('ZALO_ACCOUNT_Z_UID_1') && !names.includes('ZALO_SESSION_M1') ? true : undefined
+  })
+  assert.equal(moved, true, 'the secret kept its old name')
+  assert.equal(api.listener.started, true)
 })

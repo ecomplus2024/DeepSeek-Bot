@@ -77,7 +77,7 @@ export function install(rt) {
     memoryReviews: rt.memoryReviews(),
     connectors: rt.connectorsView(),
     capabilityStatuses: rt.capabilityStatusesView(),
-    zalo: rt.zaloLive?.() ?? { bots: {}, login: null },
+    zalo: rt.zaloLive?.() ?? { bots: {}, accounts: [], login: null },
     // The gate PIN shows only to browsers already past dsh auth — the gate never
     // answers it: remote clients type what this side displays.
     pair: rt.pairView?.() ?? { enabled: false },
@@ -279,6 +279,7 @@ export function install(rt) {
         case 'chromium-click':
           return ok(await rt.chromiumClick?.(body.bot, body.session, body.fx, body.fy) ?? { ok: false })
         case 'zalo-start':
+        case 'zalo-bind':
         case 'zalo-cancel':
         case 'zalo-logout':
         case 'zalo-reconnect':

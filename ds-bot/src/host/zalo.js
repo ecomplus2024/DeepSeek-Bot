@@ -1,11 +1,14 @@
-// Zalo: a Bot bound to a personal Zalo account follows chosen threads and talks
+// Zalo: Bots bound to a personal Zalo account follow chosen threads and talk
 // with the user there. Login is by QR code; the {cookie, imei, userAgent} session
 // lives as one secret, so it reaches no model request and no Bot's shell.
 //
-// Each thread has a mode: `talk` relays the turn's reply back to Zalo through a
-// roomWaiters waiter (the same mechanism a group uses to wait for a member),
-// `watch` only buffers messages and wakes the Bot on a @mention or keyword —
-// what it says there goes out through zalo_send, never automatically.
+// Several Bots may share one account: the credentials and the listener sit on
+// the account's uid, each thread is configured on one Bot only, and an inbound
+// message goes to that Bot. Each thread has a mode: `talk` relays the turn's
+// reply back to Zalo through a roomWaiters waiter (the same mechanism a group
+// uses to wait for a member), `watch` only buffers messages and wakes the Bot
+// on a @mention or keyword — what it says there goes out through zalo_send,
+// never automatically.
 import { randomUUID } from 'node:crypto'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { ROOM_REPLY_TIMEOUT_MS, ZALO_BUFFER_MAX, ZALO_MODES, ZALO_SEND_GAP_MS, ZALO_SEND_MAX, ZALO_SEND_WINDOW_MS, ZALO_WAKE_COOLDOWN_MS, ZALO_WAKE_LINES } from './constants.js'
@@ -31,13 +34,18 @@ const captionOf = message => {
   return caption === '' ? undefined : caption
 }
 
-export const zaloSecretName = botId => `ZALO_SESSION_${String(botId).toUpperCase().replace(/[^A-Z0-9]/g, '_').slice(0, 40)}`
+// The secret lives under the account's uid so every Bot bound to it shares one
+// login; ZALO_SESSION_<botId> names from the per-Bot layout are still read and
+// moved over on the next connect.
+const secretName = text => `ZALO_${String(text).toUpperCase().replace(/[^A-Z0-9]/g, '_').slice(0, 40)}`
+export const zaloAccountSecret = uid => secretName(`ACCOUNT_${uid}`)
+export const zaloSecretName = botId => secretName(`SESSION_${botId}`)
 
 export function install(rt) {
   const { ctx, state } = rt
   const enabled = rt.config.zalo !== false
 
-  /** @type {Map<string, {api?:any, types?:any, state:string, error?:string, saved?:string}>} */
+  /** @type {Map<string, {api?:any, types?:any, state:string, error?:string, saved?:string}>} keyed by account uid */
   const sessions = new Map()
   const sendQueues = new Map()
   const sentAt = new Map()
@@ -98,24 +106,48 @@ export function install(rt) {
 
   const teamOf = botId => state.zalo?.[botId]
   const bound = (botId) => { const team = teamOf(botId); return team?.account ? team : undefined }
+  // Bots on one account: the account is theirs while their record names its uid.
+  const botsOf = uid => Object.keys(state.zalo ?? {}).filter(id => state.zalo[id]?.account?.uid === uid)
+  // The Bot a thread belongs to: bound to its account and following it (not `off`).
+  // zalo-thread-mode keeps at most one owner; a stale double entry delivers to
+  // the first bound Bot.
+  const threadOwner = (uid, threadId) => botsOf(uid).find((botId) => {
+    const thread = teamOf(botId)?.threads?.[threadId]
+    return thread !== undefined && ZALO_MODES.includes(thread.mode) && thread.mode !== 'off'
+  })
+  // The saved login for an account: the shared name first, then a per-Bot secret
+  // left by an older version (moved over on connect).
+  const credentialsFor = (uid) => {
+    const name = zaloAccountSecret(uid)
+    const shared = rt.secretValue(name)
+    if (shared !== undefined) return { name, value: shared }
+    for (const botId of botsOf(uid)) {
+      const legacy = zaloSecretName(botId)
+      const value = rt.secretValue(legacy)
+      if (value !== undefined) return { name: legacy, value }
+    }
+    return undefined
+  }
 
-  // Sends are serialized per Bot: at least ZALO_SEND_GAP_MS apart and at most
-  // ZALO_SEND_MAX per window, so a personal account does not trip Zalo's spam watch.
+  // Sends are serialized per account: at least ZALO_SEND_GAP_MS apart and at most
+  // ZALO_SEND_MAX per window, so a personal account does not trip Zalo's spam
+  // watch — one budget covers every Bot on it.
   function zaloSend(botId, threadId, text) {
-    const session = sessions.get(botId)
+    const uid = teamOf(botId)?.account?.uid
+    const session = uid === undefined ? undefined : sessions.get(uid)
     if (session?.api === undefined) return Promise.reject(new Error('Zalo is not connected'))
     const thread = teamOf(botId)?.threads?.[threadId]
-    const run = (sendQueues.get(botId) ?? Promise.resolve()).then(async () => {
+    const run = (sendQueues.get(uid) ?? Promise.resolve()).then(async () => {
       const now = Date.now()
-      const log = (sentAt.get(botId) ?? []).filter(ts => now - ts < ZALO_SEND_WINDOW_MS)
+      const log = (sentAt.get(uid) ?? []).filter(ts => now - ts < ZALO_SEND_WINDOW_MS)
       if (log.length >= ZALO_SEND_MAX) throw new Error(`Zalo limits this account to ${ZALO_SEND_MAX} messages per 10 minutes; wait a few minutes`)
       const wait = (log.at(-1) ?? 0) + ZALO_SEND_GAP_MS - now
       if (wait > 0) await new Promise(done => setTimeout(done, wait))
       await session.api.sendMessage({ msg: text }, threadId, thread?.kind === 'group' ? session.types.group : session.types.user)
       log.push(Date.now())
-      sentAt.set(botId, log)
+      sentAt.set(uid, log)
     })
-    sendQueues.set(botId, run.catch(() => {}))
+    sendQueues.set(uid, run.catch(() => {}))
     return run
   }
 
@@ -194,15 +226,16 @@ export function install(rt) {
     }).catch(error => rt.warn('ds-bot: zalo watch delivery failed: %s', error))
   }
 
-  async function onMessage(botId, message) {
+  async function onMessage(uid, message) {
     if (message?.isSelf === true) return
-    const team = bound(botId)
     const threadId = String(message?.threadId ?? '')
-    if (team === undefined || threadId === '') return
+    if (threadId === '') return
+    if (String(message.data?.uidFrom ?? '') === String(uid)) return
     await rt.load()
-    const thread = team.threads?.[threadId]
-    if (thread === undefined || !ZALO_MODES.includes(thread.mode) || thread.mode === 'off') return
-    if (String(message.data?.uidFrom ?? '') === String(team.account?.uid ?? '')) return
+    const botId = threadOwner(uid, threadId)
+    if (botId === undefined) return
+    const team = teamOf(botId)
+    const thread = team.threads[threadId]
     const entry = {
       from: String(message.data?.dName ?? '').trim() || String(message.data?.uidFrom ?? 'someone'),
       text: captionOf(message) ?? contentOf(message),
@@ -228,49 +261,49 @@ export function install(rt) {
     }
   }
 
-  function attachSession(botId, api, lib, saved) {
+  function attachSession(uid, api, lib, saved) {
     const types = lib?.ThreadType ?? {}
     const entry = { api, state: 'ready', saved, types: { user: types.User ?? types.user ?? 0, group: types.Group ?? types.group ?? 1 } }
-    sessions.set(botId, entry)
+    sessions.set(uid, entry)
     const listener = api.listener
-    listener.onConnected?.(() => { if (sessions.get(botId) === entry) entry.state = 'ready' })
+    listener.onConnected?.(() => { if (sessions.get(uid) === entry) entry.state = 'ready' })
     listener.onClosed?.(() => {
-      if (sessions.get(botId) !== entry) return
+      if (sessions.get(uid) !== entry) return
       entry.state = 'off'
       // zca-js never reopens a closed socket; a dropped session retries a few
       // times, back off a little each round, then gives up for a manual Reconnect.
       entry.retries = (entry.retries ?? 0) + 1
       if (entry.retries > 5) return
       setTimeout(() => {
-        if (stopped || sessions.get(botId) !== entry) return
-        if (rt.secretValue(zaloSecretName(botId)) !== entry.saved) return
-        void connect(botId).catch(error => rt.warn('ds-bot: zalo reconnect for %s failed: %s', botId, error))
+        if (stopped || sessions.get(uid) !== entry) return
+        if (credentialsFor(uid)?.value !== entry.saved) return
+        void connect(uid).catch(error => rt.warn('ds-bot: zalo reconnect for %s failed: %s', uid, error))
       }, 15_000 * entry.retries)
     })
-    listener.onError?.((error) => { if (sessions.get(botId) === entry) { entry.state = 'error'; entry.error = reason(error) } })
-    listener.onMessage?.((message) => { void onMessage(botId, message).catch(error => rt.warn('ds-bot: zalo message failed: %s', error)) })
+    listener.onError?.((error) => { if (sessions.get(uid) === entry) { entry.state = 'error'; entry.error = reason(error) } })
+    listener.onMessage?.((message) => { void onMessage(uid, message).catch(error => rt.warn('ds-bot: zalo message failed: %s', error)) })
     try { listener.start() } catch (error) { entry.state = 'error'; entry.error = reason(error) }
     return entry
   }
 
-  const detach = (botId) => {
-    try { sessions.get(botId)?.api?.listener?.stop?.() } catch {}
-    sessions.delete(botId)
+  const detach = (uid) => {
+    try { sessions.get(uid)?.api?.listener?.stop?.() } catch {}
+    sessions.delete(uid)
   }
 
   // Login from the saved secret; `saved` guards against double connects on a
   // secretsChanged pass, and against an edit racing a connect in flight.
-  async function connect(botId) {
-    const saved = rt.secretValue(zaloSecretName(botId))
-    if (saved === undefined || teamOf(botId)?.account == null) { detach(botId); return }
-    const old = sessions.get(botId)
+  async function connect(uid) {
+    const creds = credentialsFor(uid)
+    if (creds === undefined || botsOf(uid).length === 0) { detach(uid); return }
+    const old = sessions.get(uid)
     // Only a live session counts as already connected: 'off' and 'error' reconnect.
-    if (old !== undefined && old.saved === saved && (old.state === 'ready' || old.state === 'connecting')) return
-    detach(botId)
-    const entry = { state: 'connecting', saved }
-    sessions.set(botId, entry)
+    if (old !== undefined && old.saved === creds.value && (old.state === 'ready' || old.state === 'connecting')) return
+    detach(uid)
+    const entry = { state: 'connecting', saved: creds.value }
+    sessions.set(uid, entry)
     let credentials
-    try { credentials = JSON.parse(saved) } catch {
+    try { credentials = JSON.parse(creds.value) } catch {
       entry.state = 'error'
       entry.error = 'The saved Zalo session cannot be read; log in again'
       return
@@ -279,15 +312,21 @@ export function install(rt) {
       const lib = await loadLib()
       const api = await new lib.Zalo({ logging: false, selfListen: false }).login(credentials)
       // A logout or a newer connect while this one was in flight makes it stale.
-      if (stopped || sessions.get(botId) !== entry || rt.secretValue(zaloSecretName(botId)) !== saved || teamOf(botId)?.account == null) {
+      if (stopped || sessions.get(uid) !== entry || credentialsFor(uid)?.value !== creds.value || botsOf(uid).length === 0) {
         try { api.listener?.stop?.() } catch {}
         return
       }
-      attachSession(botId, api, lib, saved)
+      attachSession(uid, api, lib, creds.value)
+      // A per-Bot secret left by an older version moves to the account's name.
+      if (creds.name !== zaloAccountSecret(uid)) {
+        void rt.secretEndpoint('secret-set', { name: zaloAccountSecret(uid), value: creds.value, purpose: 'Zalo session', scope: [] })
+          .then(() => Promise.all(botsOf(uid).map(botId => rt.secretEndpoint('secret-delete', { name: zaloSecretName(botId) }).catch(() => {}))))
+          .catch(error => rt.warn('ds-bot: zalo secret move failed: %s', error))
+      }
     } catch (error) {
       entry.state = 'error'
       entry.error = reason(error)
-      rt.warn('ds-bot: zalo login for %s failed: %s', botId, entry.error)
+      rt.warn('ds-bot: zalo login for %s failed: %s', uid, entry.error)
     }
   }
 
@@ -295,42 +334,60 @@ export function install(rt) {
     await rt.load().catch(() => {})
     // A read-only host (another DSH holds the lock) must not hold the account:
     // two listeners on one nick kick each other off.
-    if (rt.readOnly() !== undefined) { for (const botId of sessions.keys()) detach(botId); return }
+    if (rt.readOnly() !== undefined) { for (const uid of sessions.keys()) detach(uid); return }
     await rt.loadSecrets().catch(() => {})
-    for (const botId of new Set([...Object.keys(state.zalo ?? {}), ...sessions.keys()])) {
+    const uids = new Set(sessions.keys())
+    for (const team of Object.values(state.zalo ?? {})) if (team?.account?.uid !== undefined && team.account.uid !== '') uids.add(team.account.uid)
+    for (const uid of uids) {
       if (stopped) return
-      await connect(botId).catch(error => rt.warn('ds-bot: zalo connect for %s failed: %s', botId, error))
+      await connect(uid).catch(error => rt.warn('ds-bot: zalo connect for %s failed: %s', uid, error))
     }
   }
 
-  const live = () => ({
-    bots: Object.fromEntries(Object.keys(state.zalo ?? {}).map((botId) => {
-      const session = sessions.get(botId)
-      const team = teamOf(botId)
-      return [botId, {
-        state: session?.state ?? 'off',
-        ...(session?.error ? { error: session.error } : {}),
-        account: team?.account ?? null,
-        threads: Object.fromEntries(Object.entries(team?.threads ?? {}).map(([id, thread]) => [id, {
-          kind: thread.kind ?? 'user',
-          name: thread.name ?? id,
-          mode: thread.mode ?? 'off',
-          ...(Array.isArray(thread.keywords) && thread.keywords.length > 0 ? { keywords: thread.keywords } : {}),
-          buffered: (thread.buffer ?? []).length,
-        }])),
-      }]
-    })),
-    login: pending === null ? null : {
-      botId: pending.botId,
-      phase: pending.phase,
-      qr: pending.qr,
-      name: pending.name,
-      error: pending.error,
-    },
-  })
+  const live = () => {
+    const accounts = new Map()
+    for (const [botId, team] of Object.entries(state.zalo ?? {})) {
+      if (team?.account == null) continue
+      const uid = team.account.uid
+      const entry = accounts.get(uid) ?? { uid, name: team.account.name, bots: [] }
+      entry.bots.push(botId)
+      accounts.set(uid, entry)
+    }
+    return {
+      bots: Object.fromEntries(Object.keys(state.zalo ?? {}).map((botId) => {
+        const team = teamOf(botId)
+        const session = team?.account?.uid !== undefined ? sessions.get(team.account.uid) : undefined
+        return [botId, {
+          state: session?.state ?? 'off',
+          ...(session?.error ? { error: session.error } : {}),
+          account: team?.account ?? null,
+          threads: Object.fromEntries(Object.entries(team?.threads ?? {}).map(([id, thread]) => [id, {
+            kind: thread.kind ?? 'user',
+            name: thread.name ?? id,
+            mode: thread.mode ?? 'off',
+            ...(Array.isArray(thread.keywords) && thread.keywords.length > 0 ? { keywords: thread.keywords } : {}),
+            buffered: (thread.buffer ?? []).length,
+          }])),
+        }]
+      })),
+      accounts: [...accounts.values()].map(entry => ({
+        ...entry,
+        state: sessions.get(entry.uid)?.state ?? 'off',
+        ...(sessions.get(entry.uid)?.error ? { error: sessions.get(entry.uid).error } : {}),
+      })),
+      login: pending === null ? null : {
+        botId: pending.botId,
+        phase: pending.phase,
+        qr: pending.qr,
+        name: pending.name,
+        error: pending.error,
+      },
+    }
+  }
 
   async function listThreads(botId) {
-    const session = sessions.get(botId)
+    const uid = teamOf(botId)?.account?.uid
+    const session = uid === undefined ? undefined : sessions.get(uid)
     if (session?.api === undefined) throw new Error('Zalo is not connected')
     const configured = teamOf(botId)?.threads ?? {}
     const friends = await session.api.getAllFriends?.().catch(() => []) ?? []
@@ -353,7 +410,12 @@ export function install(rt) {
       } catch (error) { groupError ??= reason(error) }
     }
     const groups = groupIds.map(id => ({ id, kind: 'group', name: String(details[id]?.name ?? configured[id]?.name ?? id) }))
-    const mark = thread => ({ ...thread, mode: configured[thread.id]?.mode ?? 'off', keywords: configured[thread.id]?.keywords ?? [] })
+    // A thread another Bot on the same account follows is marked, so the picker
+    // can show it as taken instead of silently double-following.
+    const mark = (thread) => {
+      const owner = uid === undefined ? undefined : threadOwner(uid, thread.id)
+      return { ...thread, mode: configured[thread.id]?.mode ?? 'off', keywords: configured[thread.id]?.keywords ?? [], ...(owner !== undefined && owner !== botId ? { owner: rt.botOf(owner)?.name ?? owner } : {}) }
+    }
     const known = new Set([...users, ...groups].map(thread => thread.id))
     const others = Object.entries(configured)
       .filter(([id]) => !known.has(id))
@@ -366,7 +428,7 @@ export function install(rt) {
     async 'zalo-start'(body) {
       const bot = rt.botOf(String(body.botId ?? ''))
       if (bot === undefined) throw new Error('Unknown Bot')
-      if (sessions.get(bot.id)?.api !== undefined) throw new Error('This Bot is already connected; log out first')
+      if (teamOf(bot.id)?.account != null) throw new Error('This Bot already has a Zalo account; disconnect first')
       if (pending !== null && pending.phase !== 'error' && pending.phase !== 'expired') throw new Error('A Zalo login is already in progress')
       try { pending?.abort?.() } catch {}
       const entry = { botId: bot.id, phase: 'qr', qr: null, name: null, error: null, credentials: undefined, abort: undefined }
@@ -403,13 +465,18 @@ export function install(rt) {
           }
           if (credentials === undefined) throw new Error('Zalo gave no login credentials')
           const profile = await api.fetchAccountInfo?.().catch(() => undefined)
+          const account = { uid: String(api.getOwnId?.() ?? ''), name: String(profile?.data?.display_name ?? entry.name ?? '') }
           state.zalo ??= {}
           const team = state.zalo[bot.id] ??= { account: null, threads: {} }
-          team.account = { uid: String(api.getOwnId?.() ?? ''), name: String(profile?.data?.display_name ?? entry.name ?? '') }
+          team.account = account
           team.threads ??= {}
-          await rt.secretEndpoint('secret-set', { name: zaloSecretName(bot.id), value: JSON.stringify(credentials), purpose: `Zalo session for ${bot.name}`, scope: [] })
+          await rt.secretEndpoint('secret-set', { name: zaloAccountSecret(account.uid), value: JSON.stringify(credentials), purpose: `Zalo session for ${account.name || 'the team'}`, scope: [] })
+          if (rt.secretValue(zaloSecretName(bot.id)) !== undefined) await rt.secretEndpoint('secret-delete', { name: zaloSecretName(bot.id) }).catch(() => {})
           await rt.save()
-          attachSession(bot.id, api, lib, JSON.stringify(credentials))
+          // An account already listening — shared by another Bot, or attached by
+          // the secretsChanged pass this secret-set just ran — keeps its listener;
+          // this login's listener never started, so nothing needs stopping.
+          if (sessions.get(account.uid)?.api === undefined) attachSession(account.uid, api, lib, JSON.stringify(credentials))
           pending = null
         } catch (error) {
           if (pending === entry) { entry.phase = 'error'; entry.error = reason(error) }
@@ -424,16 +491,39 @@ export function install(rt) {
     },
     async 'zalo-logout'(body) {
       const botId = String(body.botId ?? '')
-      detach(botId)
-      if (state.zalo?.[botId]?.account !== undefined && state.zalo[botId].account !== null) {
+      const uid = teamOf(botId)?.account?.uid
+      if (uid !== undefined) {
         state.zalo[botId].account = null
         await rt.save()
+        // The account and its listener stay while other Bots use it; the last
+        // bound Bot's logout drops both.
+        if (botsOf(uid).length === 0) {
+          detach(uid)
+          if (rt.secretValue(zaloAccountSecret(uid)) !== undefined) await rt.secretEndpoint('secret-delete', { name: zaloAccountSecret(uid) })
+        }
       }
       if (rt.secretValue(zaloSecretName(botId)) !== undefined) await rt.secretEndpoint('secret-delete', { name: zaloSecretName(botId) })
       return live()
     },
     async 'zalo-reconnect'(body) {
-      await connect(String(body.botId ?? ''))
+      const uid = teamOf(String(body.botId ?? ''))?.account?.uid
+      if (uid !== undefined) await connect(uid)
+      return live()
+    },
+    // Attach a Bot to an account another Bot already logged into — no second scan.
+    async 'zalo-bind'(body) {
+      const bot = rt.botOf(String(body.botId ?? ''))
+      if (bot === undefined) throw new Error('Unknown Bot')
+      const uid = String(body.uid ?? '')
+      const owners = botsOf(uid)
+      if (owners.length === 0) throw new Error('No such Zalo account')
+      if (teamOf(bot.id)?.account != null) throw new Error('This Bot already has a Zalo account; disconnect first')
+      state.zalo ??= {}
+      const team = state.zalo[bot.id] ??= { account: null, threads: {} }
+      team.account = { ...teamOf(owners[0]).account }
+      team.threads ??= {}
+      await rt.save()
+      void connect(uid).catch(error => rt.warn('ds-bot: zalo connect for %s failed: %s', uid, error))
       return live()
     },
     'zalo-threads': body => listThreads(String(body.botId ?? '')),
@@ -443,6 +533,13 @@ export function install(rt) {
       const threadId = String(body.threadId ?? '')
       if (threadId === '') throw new Error('No thread')
       if (!ZALO_MODES.includes(body.mode)) throw new Error('Unknown mode')
+      // A thread has one owner on an account: another Bot following it must not
+      // race the first one's replies and buffers.
+      const uid = teamOf(bot.id)?.account?.uid
+      if (body.mode !== 'off' && uid !== undefined) {
+        const owner = threadOwner(uid, threadId)
+        if (owner !== undefined && owner !== bot.id) throw new Error(`"${String(body.name ?? threadId).slice(0, 60)}" is already followed by ${rt.botOf(owner)?.name ?? 'another Bot'}`)
+      }
       state.zalo ??= {}
       const team = state.zalo[bot.id] ??= { account: null, threads: {} }
       team.threads ??= {}
@@ -557,7 +654,7 @@ export function install(rt) {
         stopped = true
         try { pending?.abort?.() } catch {}
         pending = null
-        for (const botId of sessions.keys()) detach(botId)
+        for (const uid of sessions.keys()) detach(uid)
       }
     }, 'ds-bot: zalo')
 
@@ -570,7 +667,13 @@ export function install(rt) {
     const forgetBotSecrets = rt.forgetBotSecrets
     rt.forgetBotSecrets = async (botId) => {
       const result = await forgetBotSecrets?.(botId)
-      detach(botId)
+      // The account session dies with its last bound Bot; co-users keep it.
+      const uid = teamOf(botId)?.account?.uid
+      if (uid !== undefined && botsOf(uid).every(id => id === botId)) {
+        detach(uid)
+        if (rt.secretValue(zaloAccountSecret(uid)) !== undefined) await rt.secretEndpoint('secret-delete', { name: zaloAccountSecret(uid) }).catch(() => {})
+      }
+      if (rt.secretValue(zaloSecretName(botId)) !== undefined) await rt.secretEndpoint('secret-delete', { name: zaloSecretName(botId) }).catch(() => {})
       if (state.zalo !== undefined) delete state.zalo[botId]
       return result
     }
