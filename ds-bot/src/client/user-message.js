@@ -3,7 +3,7 @@ import * as ui from '@deepseek-ai/dsh-client-ui-primitives'
 import { mentionSpans } from '../shared/mentions.js'
 import { BotMark } from './mark.js'
 import { CheckIcon, CopyIcon, DownloadIcon } from './icons.js'
-import { fileUrl } from './api.js'
+import { downloadUrl, fileUrl } from './api.js'
 import { dateLocale, t } from './i18n.js'
 import { useFold } from './fold.js'
 
@@ -55,6 +55,19 @@ function UserText({ text, bots, referenceLabels, skillNames, references, actions
     ? h('button', { key: index, type: 'button', className: 'bt-umention', title: `@${part.bot.name}`, onClick: () => actions.openSession(part.bot.id) },
       h(BotMark, { bot: part.bot, size: 16 }), part.label)
     : h(Fragment, { key: index }, ui.projectUserText(part.text, referenceLabels, skillNames, 'skill', references))))
+}
+
+// The download action the plugin adds to a delivered-file card (DSH's
+// `deliverables.file.actions` slot). The card's action route names the file by its
+// Session event coordinates, which the file route resolves to the presented file.
+export function DownloadFileAction({ actionUrl }) {
+  const params = new URLSearchParams(String(actionUrl ?? '').split('?')[1] ?? '')
+  const sessionId = params.get('sessionId')
+  const seq = params.get('seq')
+  const index = params.get('index')
+  if (sessionId === null || seq === null || index === null) return null
+  return h('a', { className: 'bt-dl', href: downloadUrl({ sessionId, seq, index }), download: '', title: t('Download'), 'aria-label': t('Download'), onClick: event => event.stopPropagation() },
+    h(DownloadIcon))
 }
 
 // A stored file shown as a chip; clicking it downloads the file over the API route.
@@ -125,6 +138,9 @@ export const USER_MESSAGE_CSS = `
 .bt-ufile-name{font-size:14px;line-height:22px;font-weight:500;color:var(--bt-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bt-ufile-meta{font-size:12px;line-height:15px;color:var(--bt-ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bt-urefs{font-size:13px;line-height:18px;color:var(--bt-ink-3)}
+.bt-dl{display:inline-flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px;border-radius:8px;color:var(--bt-ink-3)}
+.bt-dl:hover{background:var(--bt-line-2);color:var(--bt-ink)}
+.bt-dl svg{width:16px;height:16px}
 .bt-utools{display:flex;flex:none;gap:2px;opacity:0;visibility:hidden;transition:opacity .12s ease,visibility .12s}
 .bt-umsg:hover .bt-utools,.bt-umsg:focus-within .bt-utools{opacity:1;visibility:visible}
 `

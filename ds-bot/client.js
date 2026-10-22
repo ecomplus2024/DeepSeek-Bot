@@ -2180,6 +2180,7 @@ ${REST_NOTE}`);
 // src/client/api.js
 var ROUTE = "api/bot";
 var fileUrl = (file) => `${ROUTE}/file?attachmentId=${encodeURIComponent(file.attachmentId)}&name=${encodeURIComponent(file.name ?? "file")}&bytes=${file.bytes ?? 0}`;
+var downloadUrl = ({ sessionId, seq, index }) => `${ROUTE}/file?sessionId=${encodeURIComponent(sessionId)}&seq=${encodeURIComponent(seq)}&index=${encodeURIComponent(index)}`;
 var REFUSALS = /* @__PURE__ */ new Set(["bot/refused", "bot/invalid", "bot/read-only", "bot/not-found", "bot/browser-off"]);
 var call = async (endpoint, payload, signal) => {
   let response;
@@ -5191,6 +5192,18 @@ function UserText({ text, bots, referenceLabels, skillNames, references, actions
     part.label
   ) : (0, import_react7.createElement)(import_react7.Fragment, { key: index }, ui.projectUserText(part.text, referenceLabels, skillNames, "skill", references)));
 }
+function DownloadFileAction({ actionUrl }) {
+  const params = new URLSearchParams(String(actionUrl ?? "").split("?")[1] ?? "");
+  const sessionId = params.get("sessionId");
+  const seq = params.get("seq");
+  const index = params.get("index");
+  if (sessionId === null || seq === null || index === null) return null;
+  return (0, import_react7.createElement)(
+    "a",
+    { className: "bt-dl", href: downloadUrl({ sessionId, seq, index }), download: "", title: t("Download"), "aria-label": t("Download"), onClick: (event) => event.stopPropagation() },
+    (0, import_react7.createElement)(DownloadIcon)
+  );
+}
 function FileChip({ file }) {
   const meta = [ui.fileExtension?.(file.name)?.toUpperCase().slice(0, 8), ui.fileSizeText?.(file.bytes)].filter(Boolean).join(" · ");
   return (0, import_react7.createElement)(
@@ -5267,6 +5280,9 @@ var USER_MESSAGE_CSS = `
 .bt-ufile-name{font-size:14px;line-height:22px;font-weight:500;color:var(--bt-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bt-ufile-meta{font-size:12px;line-height:15px;color:var(--bt-ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bt-urefs{font-size:13px;line-height:18px;color:var(--bt-ink-3)}
+.bt-dl{display:inline-flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px;border-radius:8px;color:var(--bt-ink-3)}
+.bt-dl:hover{background:var(--bt-line-2);color:var(--bt-ink)}
+.bt-dl svg{width:16px;height:16px}
 .bt-utools{display:flex;flex:none;gap:2px;opacity:0;visibility:hidden;transition:opacity .12s ease,visibility .12s}
 .bt-umsg:hover .bt-utools,.bt-umsg:focus-within .bt-utools{opacity:1;visibility:visible}
 `;
@@ -16424,6 +16440,9 @@ function apply(ctx) {
     // DSH's own turn tail stays, so what other plugins add there shows, such as the
     // cards of the files a turn delivered; its copy and branch row is hidden.
     () => shadow("conversation.chat.turnTail", { id: "bot-turn-separators", order: 1e3, inject: face }, TurnTailCell),
+    // A delivered file's card previews it in the Sidebar or opens it on the Host;
+    // the download button saves it through the browser instead.
+    () => shadow("deliverables.file.actions", { id: "bot-file-download" }, DownloadFileAction),
     // A Bot condenses its conversation without telling anyone; the chat keeps showing
     // every message.
     () => shadow("conversation.chat.node", { key: "question-reply", priority: BOT_PRIORITY, locale: "chat" }, AnsweredCell),

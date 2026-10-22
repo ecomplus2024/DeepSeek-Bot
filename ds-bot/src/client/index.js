@@ -32,7 +32,7 @@ import { noteClientError, quietly } from './diagnostics.js'
 import { ErrorToast, FEEDBACK_CSS } from './feedback.js'
 import { ABOUT_CSS } from './about.js'
 import { MEMBER_CSS, MemberDock } from './member-status.js'
-import { USER_MESSAGE_CSS, UserMessageCell, canDrawUserMessages } from './user-message.js'
+import { DownloadFileAction, USER_MESSAGE_CSS, UserMessageCell, canDrawUserMessages } from './user-message.js'
 import { noticeApprovals } from './approval-notices.js'
 import { isPhone, layoutFrame, drawerOpen } from './mobile.js'
 import { addEscapeLayer } from './overlay-hooks.js'
@@ -871,6 +871,9 @@ export function apply(ctx) {
     // DSH's own turn tail stays, so what other plugins add there shows, such as the
     // cards of the files a turn delivered; its copy and branch row is hidden.
     () => shadow('conversation.chat.turnTail', { id: 'bot-turn-separators', order: 1000, inject: face }, TurnTailCell),
+    // A delivered file's card previews it in the Sidebar or opens it on the Host;
+    // the download button saves it through the browser instead.
+    () => shadow('deliverables.file.actions', { id: 'bot-file-download' }, DownloadFileAction),
     // A Bot condenses its conversation without telling anyone; the chat keeps showing
     // every message.
     () => shadow('conversation.chat.node', { key: 'question-reply', priority: BOT_PRIORITY, locale: 'chat' }, AnsweredCell),

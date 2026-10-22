@@ -732,3 +732,36 @@ test('a stored file downloads over the API file route', async (t) => {
   ctx.get = () => undefined
   assert.equal((await route.fetch(new Request(url))).status, 404)
 })
+
+test('a presented file downloads over the API file route', async (t) => {
+  const { ctx, routes, stop } = start()
+  t.after(stop)
+  const dir = mkdtempSync(join(tmpdir(), 'ds-bot-presented-'))
+  t.after(() => rmSync(dir, { recursive: true, force: true, maxRetries: 5 }))
+  const file = join(dir, 'report.txt')
+  writeFileSync(file, 'presented bytes')
+  ctx.sessionController.resolveAgent = async sessionId => (sessionId === 's1'
+    ? { agent: { session: { id: sessionId, seq: 10, header: { cwd: dir } } } }
+    : { error: { code: 'session/unavailable', message: 'No such Session' } })
+  ctx.sessionController.page = async () => ({
+    records: [{ event: { seq: 9, type: 'deliverables/presented', data: { turn: 1, callId: 'c1', files: [{ path: file }, { path: 'relative.txt' }] } } }],
+    hasMore: false,
+  })
+  const route = routes.get('/api/bot/file')
+  const response = await route.fetch(new Request('http://localhost/api/bot/file?sessionId=s1&seq=9&index=0'))
+  assert.equal(response.status, 200)
+  assert.match(response.headers.get('content-disposition'), /^attachment/)
+  assert.match(response.headers.get('content-disposition'), /filename="report\.txt"/)
+  assert.equal(response.headers.get('content-length'), String('presented bytes'.length))
+  assert.equal(new TextDecoder().decode(await response.arrayBuffer()), 'presented bytes')
+  // A relative path resolves in the Session's folder; wrong seq, index or session 404s.
+  writeFileSync(join(dir, 'relative.txt'), 'in the folder')
+  const relative = await route.fetch(new Request('http://localhost/api/bot/file?sessionId=s1&seq=9&index=1'))
+  assert.equal(relative.status, 200)
+  assert.equal(new TextDecoder().decode(await relative.arrayBuffer()), 'in the folder')
+  assert.equal((await route.fetch(new Request('http://localhost/api/bot/file?sessionId=s1&seq=8&index=0'))).status, 404)
+  assert.equal((await route.fetch(new Request('http://localhost/api/bot/file?sessionId=s1&seq=9&index=4'))).status, 404)
+  assert.equal((await route.fetch(new Request('http://localhost/api/bot/file?sessionId=gone&seq=9&index=0'))).status, 404)
+  assert.equal((await route.fetch(new Request('http://localhost/api/bot/file?sessionId=s1&seq=9&index=-1'))).status, 404)
+  assert.equal((await route.fetch(new Request('http://localhost/api/bot/file?sessionId=s1'))).status, 404)
+})

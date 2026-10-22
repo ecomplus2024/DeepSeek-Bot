@@ -1,5 +1,8 @@
 // Client channel: the team view the browser renders, and the POST /api/bot endpoints.
 import { randomUUID } from 'node:crypto'
+import { createReadStream } from 'node:fs'
+import { stat } from 'node:fs/promises'
+import { isAbsolute, resolve } from 'node:path'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { questionReply } from './parts.js'
 import { COLORS, EXTRA_COLORS, ROUTE } from './constants.js'
@@ -400,23 +403,59 @@ export function install(rt) {
     }
   }
 
-  // A stored file (a Bot's long message, an upload) downloads over GET so the browser
-  // saves it as a file; the shared /api channel still checks the session cookie. The
-  // first chunk is read before the answer's status, so a missing file is a clean 404.
+  // A file a turn presented is named by its Session event's coordinates — the same
+  // `sessionId`, `seq` and `index` the delivered-file card's action route carries,
+  // so the browser never has to read the Session to find the path. A path the event
+  // wrote relative resolves in the folder that Session works in.
+  const presentedRef = async (url, signal) => {
+    const sessionId = url.searchParams.get('sessionId') ?? ''
+    const seq = Number(url.searchParams.get('seq'))
+    const index = Number(url.searchParams.get('index'))
+    if (sessionId === '' || !Number.isSafeInteger(seq) || !Number.isSafeInteger(index) || index < 0 || typeof rt.eventsBackwards !== 'function') return undefined
+    const agent = await rt.resolveAgent(sessionId).catch(() => undefined)
+    if (agent === undefined) return undefined
+    let declared
+    try {
+      for await (const event of rt.eventsBackwards(sessionId, signal)) {
+        if (event.seq < seq) break
+        if (event.seq === seq && event.type === 'deliverables/presented') declared = event.data?.files?.[index]
+      }
+    } catch { return undefined }
+    const path = typeof declared?.path === 'string' && declared.path.trim() !== '' ? declared.path : undefined
+    if (path === undefined) return undefined
+    const cwd = rt.sessionFolder?.(agent.session)
+    const absolute = isAbsolute(path) ? path : (cwd === undefined ? undefined : resolve(cwd, path))
+    if (absolute === undefined) return undefined
+    const info = await stat(absolute).catch(() => undefined)
+    if (info === undefined || !info.isFile()) return undefined
+    return { path: absolute, name: absolute.split(/[\\/]/).filter(Boolean).at(-1) ?? 'file', bytes: info.size }
+  }
+
+  // A stored file (a Bot's long message, an upload, a turn's presented file) downloads
+  // over GET so the browser saves it as a file; the shared /api channel still checks
+  // the session cookie. The first chunk is read before the answer's status, so a
+  // missing file is a clean 404.
   const fileResponse = async (request) => {
     const url = new URL(request.url)
-    const attachments = ctx.get?.('attachments')
     const id = url.searchParams.get('attachmentId') ?? ''
-    if (attachments === undefined || id === '') return new Response('No such file', { status: 404 })
-    const ref = {
-      attachmentId: id,
-      name: url.searchParams.get('name') || 'file',
-      bytes: Number(url.searchParams.get('bytes')) || 0,
-    }
+    const attachments = ctx.get?.('attachments')
+    let ref
     let iterator
-    try {
-      iterator = attachments.readFileStream(ref, request.signal)[Symbol.asyncIterator]()
-    } catch { return new Response('This file cannot be read here', { status: 404 }) }
+    if (id === '') {
+      ref = await presentedRef(url, request.signal)
+      if (ref === undefined) return new Response('No such file', { status: 404 })
+      iterator = createReadStream(ref.path)[Symbol.asyncIterator]()
+    } else {
+      if (attachments === undefined) return new Response('No such file', { status: 404 })
+      ref = {
+        attachmentId: id,
+        name: url.searchParams.get('name') || 'file',
+        bytes: Number(url.searchParams.get('bytes')) || 0,
+      }
+      try {
+        iterator = attachments.readFileStream(ref, request.signal)[Symbol.asyncIterator]()
+      } catch { return new Response('This file cannot be read here', { status: 404 }) }
+    }
     let pending
     try { pending = await iterator.next() } catch { return new Response('This file cannot be read here', { status: 404 }) }
     const body = new ReadableStream({
