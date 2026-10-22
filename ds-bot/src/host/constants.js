@@ -92,6 +92,9 @@ export const ZALO_WAKE_COOLDOWN_MS = 120_000
 export const ZALO_SEND_GAP_MS = 3_000
 export const ZALO_SEND_WINDOW_MS = 600_000
 export const ZALO_SEND_MAX = 20
+// A reply carries the message it answers; only this much of it is quoted in
+// the buffer line so the Bot sees what the sender answers without flooding it.
+export const ZALO_QUOTE_CHARS = 160
 // Older lines zalo_read pulls in: kept beside the live buffer under one cap,
 // one page reads at most ZALO_READ_MAX, one fetch asks Zalo for ZALO_FETCH_MAX.
 export const ZALO_HISTORY_MAX = 500

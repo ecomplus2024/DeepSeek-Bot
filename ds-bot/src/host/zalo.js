@@ -11,7 +11,8 @@
 // never automatically.
 import { randomUUID } from 'node:crypto'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { ROOM_REPLY_TIMEOUT_MS, ZALO_BUFFER_MAX, ZALO_FETCH_MAX, ZALO_HISTORY_MAX, ZALO_MODES, ZALO_READ_MAX, ZALO_READ_PAGE, ZALO_SEND_GAP_MS, ZALO_SEND_MAX, ZALO_SEND_WINDOW_MS, ZALO_SYNC_TIMEOUT_MS, ZALO_WAKE_COOLDOWN_MS, ZALO_WAKE_LINES } from './constants.js'
+import { ROOM_REPLY_TIMEOUT_MS, ZALO_BUFFER_MAX, ZALO_FETCH_MAX, ZALO_HISTORY_MAX, ZALO_MODES, ZALO_QUOTE_CHARS, ZALO_READ_MAX, ZALO_READ_PAGE, ZALO_SEND_GAP_MS, ZALO_SEND_MAX, ZALO_SEND_WINDOW_MS, ZALO_SYNC_TIMEOUT_MS, ZALO_WAKE_COOLDOWN_MS, ZALO_WAKE_LINES } from './constants.js'
+import { headOf } from './text.js'
 import { output } from './tools.js'
 
 const QR_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36'
@@ -116,28 +117,42 @@ export function install(rt) {
     const cli = String(data?.cliMsgId ?? '')
     return cli === '' ? '' : `${data?.uidFrom}:${cli}`
   }
-  const entryOf = (message) => {
+  // A reply carries the message it answers as data.quote: who wrote it and its
+  // text, so a bare "ok" still lands in context. The account's own quoted
+  // sender shows as 'you' like an outbound line.
+  const quoteOf = (message, selfUid) => {
+    const quote = message?.data?.quote
+    if (typeof quote !== 'object' || quote === null) return undefined
+    const owner = String(quote.ownerId ?? '')
+    const from = selfUid !== undefined && owner === String(selfUid) ? 'you' : String(quote.fromD ?? '').trim() || owner || 'someone'
+    const text = String(quote.msg ?? '').trim()
+    return { from, text: text === '' ? '[message]' : headOf(text, ZALO_QUOTE_CHARS) }
+  }
+  const entryOf = (message, selfUid) => {
     const key = keyOf(message)
+    const quote = quoteOf(message, selfUid)
     return {
       from: message?.isSelf === true ? 'you' : String(message?.data?.dName ?? '').trim() || String(message?.data?.uidFrom ?? 'someone'),
       text: captionOf(message) ?? contentOf(message),
       ts: Number(message?.data?.ts) || Date.now(),
+      ...(quote !== undefined ? { quote } : {}),
       // The photo URL is kept so a later wake or zalo_read can still pull the
       // image while the link lives; Zalo expires them.
       ...(photoUrl(message) !== undefined ? { img: photoUrl(message) } : {}),
       ...(key !== '' ? { id: key } : {}),
     }
   }
+  const lineText = line => (line.quote === undefined ? line.text : `[re ${line.quote.from}: ${line.quote.text}] ${line.text}`)
 
   // Fetched lines land in thread.history (deduped, oldest first, capped) rather
   // than the live buffer: they are old, not unread.
-  const rememberOld = (thread, messages) => {
+  const rememberOld = (thread, messages, selfUid) => {
     const seen = new Set()
     for (const line of [...(thread.history ?? []), ...(thread.buffer ?? [])]) if (line.id !== undefined && line.id !== '') seen.add(line.id)
     const fresh = []
     for (const message of messages) {
       if (message?.data === undefined) continue
-      const entry = entryOf(message)
+      const entry = entryOf(message, selfUid)
       if (entry.id !== undefined) {
         if (seen.has(entry.id)) continue
         seen.add(entry.id)
@@ -168,7 +183,7 @@ export function install(rt) {
       byThread.get(threadId).list.push(message)
     }
     let touched = false
-    for (const { thread, list } of byThread.values()) if (thread !== undefined) touched = rememberOld(thread, list) > 0 || touched
+    for (const { thread, list } of byThread.values()) if (thread !== undefined) touched = rememberOld(thread, list, uid) > 0 || touched
     if (touched) await rt.save().catch(() => {})
   }
 
@@ -198,7 +213,7 @@ export function install(rt) {
       const result = await session.api.getGroupChatHistory(threadId, Math.min(want, ZALO_FETCH_MAX)).catch(() => undefined)
       if (result !== undefined) {
         reached = true
-        rememberOld(thread, result.groupMsgs ?? [])
+        rememberOld(thread, result.groupMsgs ?? [], uid)
         thread.historyMore = (result.more ?? 0) !== 0
         void rt.save().catch(() => {})
       }
@@ -273,6 +288,9 @@ export function install(rt) {
     return name !== '' && entry.text.toLowerCase().includes(`@${name}`)
   }
   const wakes = (message, team, thread, entry) => {
+    // Replying to the Bot's own Zalo message addresses it, in a DM or a group.
+    const uid = String(team.account?.uid ?? '')
+    if (uid !== '' && String(message?.data?.quote?.ownerId ?? '') === uid) return 'replied to your message'
     if (thread.kind === 'group' && mentioned(message, team, entry)) return 'you were mentioned'
     const hit = (thread.keywords ?? []).find(word => word !== '' && entry.text.toLowerCase().includes(String(word).toLowerCase()))
     return hit !== undefined ? `keyword "${hit}"` : null
@@ -303,7 +321,7 @@ export function install(rt) {
         sender: entry.from,
         exchangeId,
         note: `${thread.kind === 'group' ? `group "${thread.name ?? threadId}"` : 'direct message'} from ${entry.from} · your reply is sent back to Zalo`,
-        text: entry.text,
+        text: lineText(entry),
         ...(images !== undefined ? { images } : {}),
       }).catch(error => finish({ failure: { code: 'DELIVERY', message: String(error?.message ?? error).slice(0, 200) } }))
     })
@@ -322,7 +340,7 @@ export function install(rt) {
   // answers that one, not the chatter around it.
   async function wakeWatch(botId, threadId, thread, why, images, trigger) {
     const text = (thread.buffer ?? []).slice(-ZALO_WAKE_LINES)
-      .map(line => `${line.from}: ${line.text}${line === trigger ? '  ⟵ the message that called you' : ''}`).join('\n')
+      .map(line => `${line.from}: ${lineText(line)}${line === trigger ? '  ⟵ the message that called you' : ''}`).join('\n')
     if (text === '') return
     // Photo links still living in the buffer are pulled again so the wake shows
     // the Bot what it was pinged about; expired links just drop out.
@@ -351,7 +369,7 @@ export function install(rt) {
     if (botId === undefined) return
     const team = teamOf(botId)
     const thread = team.threads[threadId]
-    const entry = entryOf(message)
+    const entry = entryOf(message, uid)
     thread.buffer = [...(thread.buffer ?? []), entry].slice(-ZALO_BUFFER_MAX)
     void rt.save().catch(() => {})
     if (thread.mode === 'talk') {
@@ -755,7 +773,7 @@ export function install(rt) {
         const images = (await Promise.all(page.filter(line => typeof line.img === 'string').slice(-4)
           .map(line => downloadImage(line.img, `history:${id}`)))).filter(file => file !== undefined)
         return {
-          text: [`"${thread.name ?? id}" — messages ${end - page.length + 1}–${end} of ${known.length}:`, ...page.map(line => `${new Date(line.ts).toISOString().slice(5, 16).replace('T', ' ')} ${line.from}: ${line.text}`), ...notes].join('\n')
+          text: [`"${thread.name ?? id}" — messages ${end - page.length + 1}–${end} of ${known.length}:`, ...page.map(line => `${new Date(line.ts).toISOString().slice(5, 16).replace('T', ' ')} ${line.from}: ${lineText(line)}`), ...notes].join('\n')
             + (images.length > 0 ? `\n(${images.length} photo(s) attached below)` : ''),
           ...(images.length > 0 ? { images } : {}),
         }

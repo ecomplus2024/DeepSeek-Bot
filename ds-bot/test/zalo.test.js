@@ -397,6 +397,42 @@ test('zalo_read pages by count and pulls older lines from Zalo', async (t) => {
   assert.match(past.text, /has 1 known messages; skip=1 goes past them/)
 })
 
+// A reply as Zalo delivers it: data.quote carries the answered message.
+const quoted = (threadId, text, quote) => inbound(threadId, text, {
+  data: { uidFrom: threadId, dName: 'Minh', content: text, msgId: `r-${threadId}-${text}`, ts: Date.now(), quote },
+})
+
+test('a reply shows the quoted line and a reply to the Bot wakes a watch thread', async (t) => {
+  const { call, ctx, delivered, api, stop } = start()
+  t.after(stop)
+  await linked(call, api)
+  await call('zalo-thread-mode', { botId: 'm1', threadId: 'u-minh', kind: 'user', name: 'Minh', mode: 'talk' })
+
+  api.emit(quoted('u-minh', 'sure', { ownerId: 'u-lan', fromD: 'Lan', msg: 'come at 6?', ts: 1 }))
+  const message = await waitFor(() => delivered.find(entry => entry.sessionId === 'm1'))
+  assert.ok(message !== undefined, 'nothing delivered to the Bot')
+  assert.match(message.message.content[0].text, /\[re Lan: come at 6\?\] sure/)
+
+  const read = await ctx.registeredTools.get('zalo_read').execute({ thread: 'u-minh' }, { agent: { id: 'm1' } })
+  assert.match(read.text, /\[re Lan: come at 6\?\] sure/)
+
+  // Replying to the Bot's own message is addressed to it: a watch thread
+  // wakes on it, and its own quoted sender shows as "you".
+  await call('zalo-thread-mode', { botId: 'm1', threadId: 'u-lan', kind: 'user', name: 'Lan', mode: 'watch', keywords: [] })
+  api.emit(quoted('u-lan', 'and you?', { ownerId: 'z-uid-1', fromD: 'Shop Bot', msg: 'hi Lan', ts: 2 }))
+  const wake = await waitFor(() => delivered.length === 2 ? delivered.at(-1) : undefined)
+  assert.ok(wake !== undefined, 'a reply to the Bot did not wake it')
+  assert.match(wake.message.content[0].text, /replied to your message/)
+  assert.match(wake.message.content[0].text, /\[re you: hi Lan\] and you\? {2}⟵ the message that called you/)
+
+  // A quote of someone else's message is buffered, but does not wake it.
+  api.emit(quoted('u-lan', 'ok then', { ownerId: 'u-other', fromD: 'Khac', msg: 'whatever', ts: 3 }))
+  await settle(); await settle()
+  assert.equal(delivered.length, 2)
+  const buffer = await ctx.registeredTools.get('zalo_read').execute({ thread: 'u-lan' }, { agent: { id: 'm1' } })
+  assert.match(buffer.text, /\[re Khac: whatever\] ok then/)
+})
+
 test('zalo-threads lists friends and groups; logout clears the account and its secret', async (t) => {
   const { call, home, api, stop } = start()
   t.after(stop)
