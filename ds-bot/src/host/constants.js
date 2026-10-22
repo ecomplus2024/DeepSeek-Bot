@@ -92,6 +92,15 @@ export const ZALO_WAKE_COOLDOWN_MS = 120_000
 export const ZALO_SEND_GAP_MS = 3_000
 export const ZALO_SEND_WINDOW_MS = 600_000
 export const ZALO_SEND_MAX = 20
+// Older lines zalo_read pulls in: kept beside the live buffer under one cap,
+// one page reads at most ZALO_READ_MAX, one fetch asks Zalo for ZALO_FETCH_MAX.
+export const ZALO_HISTORY_MAX = 500
+export const ZALO_READ_PAGE = 30
+export const ZALO_READ_MAX = 100
+export const ZALO_FETCH_MAX = 200
+// A requestOldMessages sync is answered by an 'old_messages' event — or not at
+// all on a dead socket, so a read waits this long then serves what is stored.
+export const ZALO_SYNC_TIMEOUT_MS = 10_000
 // Answers a group gives to what members post after the round moved on (their finished
 // work, mostly), before the user speaks there again.
 export const ROOM_LATE_ROUNDS = 10

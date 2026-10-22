@@ -11,7 +11,7 @@
 // never automatically.
 import { randomUUID } from 'node:crypto'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { ROOM_REPLY_TIMEOUT_MS, ZALO_BUFFER_MAX, ZALO_MODES, ZALO_SEND_GAP_MS, ZALO_SEND_MAX, ZALO_SEND_WINDOW_MS, ZALO_WAKE_COOLDOWN_MS, ZALO_WAKE_LINES } from './constants.js'
+import { ROOM_REPLY_TIMEOUT_MS, ZALO_BUFFER_MAX, ZALO_FETCH_MAX, ZALO_HISTORY_MAX, ZALO_MODES, ZALO_READ_MAX, ZALO_READ_PAGE, ZALO_SEND_GAP_MS, ZALO_SEND_MAX, ZALO_SEND_WINDOW_MS, ZALO_SYNC_TIMEOUT_MS, ZALO_WAKE_COOLDOWN_MS, ZALO_WAKE_LINES } from './constants.js'
 import { output } from './tools.js'
 
 const QR_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36'
@@ -50,6 +50,9 @@ export function install(rt) {
   const sendQueues = new Map()
   const sentAt = new Map()
   const lastWake = new Map()
+  // Waiters for an 'old_messages' event, keyed `${uid}:${user|group}`: one sync
+  // answer can carry every thread of a kind, so all its waiters resolve at once.
+  const syncWaits = new Map()
   // At most one QR login at a time: its QR image and progress feed the panel.
   let pending = null
   let stopped = false
@@ -102,6 +105,118 @@ export function install(rt) {
   const imageAttachment = message => {
     const url = photoUrl(message)
     return url === undefined ? Promise.resolve(undefined) : downloadImage(url, message?.data?.msgId ?? '?')
+  }
+
+  // One shape for a stored line, live or fetched: `id` dedupes a message a sync
+  // returns after the listener already buffered it (msgId, else uid+cliMsgId).
+  const keyOf = (message) => {
+    const data = message?.data
+    const msgId = String(data?.msgId ?? '')
+    if (msgId !== '') return msgId
+    const cli = String(data?.cliMsgId ?? '')
+    return cli === '' ? '' : `${data?.uidFrom}:${cli}`
+  }
+  const entryOf = (message) => {
+    const key = keyOf(message)
+    return {
+      from: message?.isSelf === true ? 'you' : String(message?.data?.dName ?? '').trim() || String(message?.data?.uidFrom ?? 'someone'),
+      text: captionOf(message) ?? contentOf(message),
+      ts: Number(message?.data?.ts) || Date.now(),
+      // The photo URL is kept so a later wake or zalo_read can still pull the
+      // image while the link lives; Zalo expires them.
+      ...(photoUrl(message) !== undefined ? { img: photoUrl(message) } : {}),
+      ...(key !== '' ? { id: key } : {}),
+    }
+  }
+
+  // Fetched lines land in thread.history (deduped, oldest first, capped) rather
+  // than the live buffer: they are old, not unread.
+  const rememberOld = (thread, messages) => {
+    const seen = new Set()
+    for (const line of [...(thread.history ?? []), ...(thread.buffer ?? [])]) if (line.id !== undefined && line.id !== '') seen.add(line.id)
+    const fresh = []
+    for (const message of messages) {
+      if (message?.data === undefined) continue
+      const entry = entryOf(message)
+      if (entry.id !== undefined) {
+        if (seen.has(entry.id)) continue
+        seen.add(entry.id)
+      }
+      fresh.push(entry)
+    }
+    if (fresh.length === 0) return 0
+    thread.history = [...(thread.history ?? []), ...fresh].sort((a, b) => a.ts - b.ts).slice(-ZALO_HISTORY_MAX)
+    return fresh.length
+  }
+
+  // What zalo_read pages through: fetched history first, then the live buffer,
+  // with a synced copy of a live line dropped on the boundary.
+  const mergedOf = (thread) => {
+    const live = new Set((thread.buffer ?? []).map(line => line.id).filter(id => id !== undefined && id !== ''))
+    return [...(thread.history ?? []).filter(line => line.id === undefined || line.id === '' || !live.has(line.id)), ...(thread.buffer ?? [])]
+      .sort((a, b) => a.ts - b.ts)
+  }
+
+  async function onOldMessages(uid, messages) {
+    await rt.load()
+    const byThread = new Map()
+    for (const message of messages) {
+      const threadId = String(message?.threadId ?? '')
+      const botId = threadId === '' ? undefined : threadOwner(uid, threadId)
+      if (botId === undefined) continue
+      if (!byThread.has(threadId)) byThread.set(threadId, { thread: teamOf(botId)?.threads?.[threadId], list: [] })
+      byThread.get(threadId).list.push(message)
+    }
+    let touched = false
+    for (const { thread, list } of byThread.values()) if (thread !== undefined) touched = rememberOld(thread, list) > 0 || touched
+    if (touched) await rt.save().catch(() => {})
+  }
+
+  const awaitSync = (uid, kind) => new Promise((resolve) => {
+    const key = `${uid}:${kind}`
+    const finish = (got) => {
+      const list = (syncWaits.get(key) ?? []).filter(item => item !== finish)
+      if (list.length === 0) syncWaits.delete(key); else syncWaits.set(key, list)
+      clearTimeout(timer)
+      resolve(got)
+    }
+    const timer = setTimeout(() => finish(false), ZALO_SYNC_TIMEOUT_MS)
+    syncWaits.set(key, [...(syncWaits.get(key) ?? []), finish])
+  })
+
+  // Pulls older lines into thread.history when a zalo_read pages past what is
+  // stored. A group answers getGroupChatHistory with its newest `count`; a user
+  // thread only syncs over the socket. Zalo keeps roughly the last two weeks of
+  // a session, so truly old messages are simply not there.
+  const fetchOlder = async (botId, threadId, thread, want) => {
+    const uid = teamOf(botId)?.account?.uid
+    const session = uid === undefined ? undefined : sessions.get(uid)
+    if (session?.api === undefined) return false
+    const kind = thread.kind === 'group' ? 'group' : 'user'
+    let reached = false
+    if (kind === 'group' && typeof session.api.getGroupChatHistory === 'function') {
+      const result = await session.api.getGroupChatHistory(threadId, Math.min(want, ZALO_FETCH_MAX)).catch(() => undefined)
+      if (result !== undefined) {
+        reached = true
+        rememberOld(thread, result.groupMsgs ?? [])
+        thread.historyMore = (result.more ?? 0) !== 0
+        void rt.save().catch(() => {})
+      }
+    }
+    const listener = session.api.listener
+    if (mergedOf(thread).length < want && typeof listener?.requestOldMessages === 'function') {
+      const had = (thread.history ?? []).length
+      const waiting = awaitSync(uid, kind)
+      try { listener.requestOldMessages(kind === 'group' ? session.types.group : session.types.user, (thread.history ?? [])[0]?.id ?? (thread.buffer ?? [])[0]?.id ?? null) } catch {}
+      if (await waiting) {
+        reached = true
+        if ((thread.history ?? []).length > had) {
+          thread.historyMore = true
+          void rt.save().catch(() => {})
+        }
+      }
+    }
+    return reached
   }
 
   const teamOf = botId => state.zalo?.[botId]
@@ -236,14 +351,7 @@ export function install(rt) {
     if (botId === undefined) return
     const team = teamOf(botId)
     const thread = team.threads[threadId]
-    const entry = {
-      from: String(message.data?.dName ?? '').trim() || String(message.data?.uidFrom ?? 'someone'),
-      text: captionOf(message) ?? contentOf(message),
-      ts: Date.now(),
-      // The photo URL is kept in the buffer so a later wake or zalo_read can
-      // still pull the image while the link lives; Zalo expires them.
-      ...(photoUrl(message) !== undefined ? { img: photoUrl(message) } : {}),
-    }
+    const entry = entryOf(message)
     thread.buffer = [...(thread.buffer ?? []), entry].slice(-ZALO_BUFFER_MAX)
     void rt.save().catch(() => {})
     if (thread.mode === 'talk') {
@@ -282,6 +390,14 @@ export function install(rt) {
     })
     listener.onError?.((error) => { if (sessions.get(uid) === entry) { entry.state = 'error'; entry.error = reason(error) } })
     listener.onMessage?.((message) => { void onMessage(uid, message).catch(error => rt.warn('ds-bot: zalo message failed: %s', error)) })
+    // A requestOldMessages answer arrives here; pending reads resolve after the
+    // merge, so they see the lines it brought.
+    listener.on?.('old_messages', (messages, type) => {
+      const key = `${uid}:${type === entry.types.group ? 'group' : 'user'}`
+      void onOldMessages(uid, messages ?? [])
+        .catch(error => rt.warn('ds-bot: zalo history sync failed: %s', error))
+        .finally(() => { for (const done of syncWaits.get(key) ?? []) done(true) })
+    })
     try { listener.start() } catch (error) { entry.state = 'error'; entry.error = reason(error) }
     return entry
   }
@@ -289,6 +405,7 @@ export function install(rt) {
   const detach = (uid) => {
     try { sessions.get(uid)?.api?.listener?.stop?.() } catch {}
     sessions.delete(uid)
+    for (const [key, waits] of syncWaits) if (key.startsWith(`${uid}:`)) for (const done of waits) done(false)
   }
 
   // Login from the saved secret; `saved` guards against double connects on a
@@ -548,7 +665,7 @@ export function install(rt) {
       if (typeof body.name === 'string' && body.name.trim() !== '') thread.name = body.name.trim().slice(0, 100)
       thread.mode = body.mode
       thread.keywords = Array.isArray(body.keywords) ? body.keywords.map(word => String(word).trim()).filter(word => word !== '').slice(0, 20) : []
-      if (body.mode === 'off') { delete thread.buffer; delete thread.keywords }
+      if (body.mode === 'off') { delete thread.buffer; delete thread.history; delete thread.historyMore; delete thread.keywords }
       else thread.buffer ??= []
       await rt.save()
       return live()
@@ -587,14 +704,18 @@ export function install(rt) {
         const { team, error } = await callerTeam(exec, 'zalo_threads')
         if (error !== undefined) return error
         const lines = Object.entries(team.threads ?? {}).map(([id, thread]) =>
-          `- "${thread.name ?? id}" (${thread.kind ?? 'user'}, id ${id}) — ${thread.mode ?? 'off'}${(thread.buffer ?? []).length > 0 ? `, ${thread.buffer.length} unread` : ''}`)
+          `- "${thread.name ?? id}" (${thread.kind ?? 'user'}, id ${id}) — ${thread.mode ?? 'off'}${(thread.buffer ?? []).length > 0 ? `, ${thread.buffer.length} unread` : ''}${(thread.history ?? []).length > 0 ? `, ${thread.history.length} older stored` : ''}`)
         return lines.length === 0 ? 'No Zalo threads configured yet. Ask the user to pick them in Settings → Connectors.' : ['Zalo threads:', ...lines].join('\n')
       },
     }))
     ctx.tools.register(defineTool({
       name: 'zalo_read',
-      description: 'Read the recent messages buffered from a watched or talked Zalo thread. Name the thread by its exact name or id from zalo_threads. Photo messages come back as image attachments while their Zalo links still live.',
-      parameters: { thread: { type: 'string', required: true, description: 'Exact thread name or id from zalo_threads' } },
+      description: 'Read the messages of a Zalo thread you follow, newest last — live buffered ones plus older ones pulled from Zalo when you page past them (Zalo keeps roughly two weeks back, so truly old messages are not there). Page with count and skip. Photo messages come back as image attachments while their Zalo links still live.',
+      parameters: {
+        thread: { type: 'string', required: true, description: 'Exact thread name or id from zalo_threads' },
+        count: { type: 'integer', description: `How many messages to show; default ${ZALO_READ_PAGE}, at most ${ZALO_READ_MAX}` },
+        skip: { type: 'integer', description: 'Skip this many of the newest messages — the read result says the next skip to page further back' },
+      },
       output: {
         schema: { type: 'object', additionalProperties: false, properties: { text: { type: 'string' }, images: { type: 'array' } } },
         render: (_args, value) => [
@@ -603,19 +724,38 @@ export function install(rt) {
         ],
       },
       async execute(args, exec) {
-        const { team, error } = await callerTeam(exec, 'zalo_read')
+        const { bot, team, error } = await callerTeam(exec, 'zalo_read')
         if (error !== undefined) return { text: error }
         const found = findThread(team, String(args.thread ?? ''))
         if (found === undefined) return { text: 'No such Zalo thread. Call zalo_threads for the list.' }
         const [id, thread] = found
-        const lines = (thread.buffer ?? []).map(line => `${new Date(line.ts).toISOString().slice(5, 16).replace('T', ' ')} ${line.from}: ${line.text}`)
-        if (lines.length === 0) return { text: `Nothing buffered from "${thread.name ?? id}" yet.` }
-        // The last few buffered photo links get re-downloaded so the Bot can see
-        // them; Zalo expires them, so misses just drop out of the result.
-        const images = (await Promise.all((thread.buffer ?? []).filter(line => typeof line.img === 'string').slice(-4)
+        const count = Number.isInteger(args.count) ? Math.min(Math.max(args.count, 1), ZALO_READ_MAX) : ZALO_READ_PAGE
+        const skip = Number.isInteger(args.skip) ? Math.max(args.skip, 0) : 0
+        let known = mergedOf(thread)
+        let fetched
+        if (thread.mode !== 'off' && known.length < skip + count) {
+          fetched = await fetchOlder(bot.id, id, thread, skip + count)
+          known = mergedOf(thread)
+        }
+        const end = Math.max(known.length - skip, 0)
+        const page = known.slice(Math.max(end - count, 0), end)
+        if (page.length === 0) {
+          return { text: known.length === 0
+            ? `Nothing known from "${thread.name ?? id}" yet${fetched === false ? ' — Zalo is not connected, so nothing older could be pulled' : ''}.`
+            : `"${thread.name ?? id}" has ${known.length} known messages; skip=${skip} goes past them.` }
+        }
+        const older = end - page.length
+        const notes = [
+          older > 0 ? `${older} older — page back with skip=${skip + page.length}` : '',
+          thread.historyMore === true ? 'Zalo may hold older ones; keep paging to pull them' : '',
+          fetched === false ? 'Zalo is not connected — only what is stored shows' : '',
+        ].filter(note => note !== '')
+        // The last few photo links on the page get re-downloaded so the Bot can
+        // see them; Zalo expires them, so misses just drop out of the result.
+        const images = (await Promise.all(page.filter(line => typeof line.img === 'string').slice(-4)
           .map(line => downloadImage(line.img, `history:${id}`)))).filter(file => file !== undefined)
         return {
-          text: [`"${thread.name ?? id}" — last ${lines.length} messages:`, ...lines].join('\n')
+          text: [`"${thread.name ?? id}" — messages ${end - page.length + 1}–${end} of ${known.length}:`, ...page.map(line => `${new Date(line.ts).toISOString().slice(5, 16).replace('T', ' ')} ${line.from}: ${line.text}`), ...notes].join('\n')
             + (images.length > 0 ? `\n(${images.length} photo(s) attached below)` : ''),
           ...(images.length > 0 ? { images } : {}),
         }

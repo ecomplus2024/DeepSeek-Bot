@@ -16,11 +16,20 @@ function fakeZalo() {
   const api = {
     sent,
     logins,
+    historyCalls: [],
+    syncCalls: [],
+    groupHistory: {},
+    oldMessages: [],
     listener: {
       onMessage: fn => { handlers.message = fn },
       onConnected: fn => { handlers.connected = fn },
       onClosed: fn => { handlers.closed = fn },
       onError: fn => { handlers.error = fn },
+      on: (name, fn) => { (handlers[name] ??= []).push(fn) },
+      requestOldMessages: (type, lastId) => {
+        api.syncCalls.push({ type, lastId })
+        for (const fn of handlers.old_messages ?? []) fn(api.oldMessages, type)
+      },
       start: () => { api.listener.started = true; handlers.connected?.() },
       stop: () => { api.listener.started = false },
       started: false,
@@ -32,6 +41,10 @@ function fakeZalo() {
     async getAllFriends() { return [{ userId: 'u-minh', displayName: 'Minh' }] },
     async getAllGroups() { return { version: 'v1', gridVerMap: { g1: 'v1' } } },
     async getGroupInfo() { return { gridInfoMap: { g1: { name: 'Team Chat' } } } },
+    async getGroupChatHistory(threadId, count = 50) {
+      api.historyCalls.push({ threadId, count })
+      return { lastActionId: 'a', lastActionIdOther: 'b', more: 0, groupMsgs: (api.groupHistory[threadId] ?? []).slice(-count) }
+    },
   }
   const lib = {
     ThreadType: { User: 0, Group: 1 },
@@ -332,6 +345,56 @@ test('zalo tools: threads list, read the buffer, send only to configured threads
   await call('zalo-thread-mode', { botId: 'm1', threadId: 'u-off', kind: 'user', name: 'Stranger', mode: 'off' })
   assert.match(await ctx.registeredTools.get('zalo_send').execute({ thread: 'u-off', text: 'x' }, exec), /off/)
   assert.match(await ctx.registeredTools.get('zalo_send').execute({ thread: 'nobody', text: 'x' }, exec), /No such Zalo thread/)
+})
+
+// An older line as Zalo returns it (same shape for group history and sync).
+const hist = (threadId, text, msgId, ts) => ({
+  threadId, isSelf: false,
+  data: { uidFrom: 'u-minh', dName: 'Minh', content: text, msgId, ts: String(ts) },
+})
+
+test('zalo_read pages by count and pulls older lines from Zalo', async (t) => {
+  const { call, ctx, api, stop } = start()
+  t.after(stop)
+  await linked(call, api)
+  await call('zalo-thread-mode', { botId: 'm1', threadId: 'g1', kind: 'group', name: 'Team Chat', mode: 'watch', keywords: [] })
+
+  api.emit(inbound('g1', 'live one', { data: { uidFrom: 'g1', dName: 'Minh', content: 'live one', msgId: 'g-live-1', ts: '100' } }))
+  api.emit(inbound('g1', 'live two', { data: { uidFrom: 'g1', dName: 'Minh', content: 'live two', msgId: 'g-live-2', ts: '200' } }))
+  const buffered = await waitFor(async () => (await status(call)).bots.m1.threads.g1?.buffered === 2 || undefined)
+  assert.ok(buffered !== undefined, 'nothing buffered')
+
+  const exec = { agent: { id: 'm1' } }
+  const read = ctx.registeredTools.get('zalo_read')
+
+  const first = await read.execute({ thread: 'g1', count: 1 }, exec)
+  assert.match(first.text, /messages 2–2 of 2/)
+  assert.match(first.text, /live two/)
+  assert.doesNotMatch(first.text, /live one/)
+
+  // Paging past the stored lines asks group history for as many as wanted;
+  // the copy of a line heard live dedupes on its msgId.
+  api.groupHistory.g1 = [hist('g1', 'old one', 'g-old-1', '10'), hist('g1', 'old two', 'g-old-2', '50'), hist('g1', 'live one copy', 'g-live-1', '100')]
+  const older = await read.execute({ thread: 'g1', count: 2, skip: 2 }, exec)
+  assert.deepEqual(api.historyCalls, [{ threadId: 'g1', count: 4 }])
+  assert.match(older.text, /messages 1–2 of 4/)
+  assert.match(older.text, /old one/)
+  assert.match(older.text, /old two/)
+  assert.doesNotMatch(older.text, /live/)
+
+  // A user thread has no REST history: it syncs over the socket instead.
+  await call('zalo-thread-mode', { botId: 'm1', threadId: 'u-minh', kind: 'user', name: 'Minh', mode: 'watch', keywords: [] })
+  api.oldMessages = [hist('u-minh', 'synced old', 'u-old-1', '5')]
+  const deep = await read.execute({ thread: 'u-minh', count: 10 }, exec)
+  assert.equal(api.syncCalls.length, 1)
+  assert.equal(api.syncCalls[0].type, 0)
+  assert.equal(api.syncCalls[0].lastId, null)
+  assert.match(deep.text, /synced old/)
+
+  // The next page asks the sync for lines older than the oldest known one.
+  const past = await read.execute({ thread: 'u-minh', count: 10, skip: 1 }, exec)
+  assert.equal(api.syncCalls[1].lastId, 'u-old-1')
+  assert.match(past.text, /has 1 known messages; skip=1 goes past them/)
 })
 
 test('zalo-threads lists friends and groups; logout clears the account and its secret', async (t) => {
