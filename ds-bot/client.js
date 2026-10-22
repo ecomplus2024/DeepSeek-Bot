@@ -189,6 +189,7 @@ var ZH = {
   // Spaces
   Space: "空间",
   "Spaces · {count}": "空间 · {count}",
+  All: "全部",
   Ungrouped: "未分组",
   "New space": "新建空间",
   "Space name": "空间名",
@@ -1199,6 +1200,7 @@ var VI = {
   // Spaces
   Space: "Khu vực",
   "Spaces · {count}": "Khu vực · {count}",
+  All: "Tất cả",
   Ungrouped: "Chưa nhóm",
   "New space": "Khu vực mới",
   "Space name": "Tên khu vực",
@@ -6615,16 +6617,6 @@ function AgentRow({ agent, actions, useSessions, useSessionStatus, useUi, wide, 
     )
   );
 }
-function SpaceHead({ space, count, folded, locked, onToggle }) {
-  return (0, import_react11.createElement)(
-    "button",
-    { type: "button", className: "bt-space-head", "aria-expanded": String(!folded && !locked), onClick: onToggle },
-    (0, import_react11.createElement)("span", { className: `bt-space-chev${folded || locked ? " is-fold" : ""}`, "aria-hidden": true }, locked ? (0, import_react11.createElement)(LockIcon) : (0, import_react11.createElement)(ChevronRightIcon)),
-    space?.color ? (0, import_react11.createElement)("span", { className: "bt-space-dot", style: { background: paintCss(space.color) }, "aria-hidden": true }) : null,
-    (0, import_react11.createElement)("span", { className: "bt-space-name" }, space?.name ?? t("Ungrouped")),
-    (0, import_react11.createElement)("span", { className: "bt-space-count", "aria-hidden": true }, locked ? t("Locked") : String(count))
-  );
-}
 function SpacePinForm({ onUnlock }) {
   const [pin, setPin] = (0, import_react11.useState)("");
   const [wrong, setWrong] = (0, import_react11.useState)(false);
@@ -6663,16 +6655,17 @@ function SpacePinForm({ onUnlock }) {
     wrong ? (0, import_react11.createElement)("span", { className: "bt-space-pin-err", role: "alert" }, t("Wrong PIN")) : null
   );
 }
-var readFolds = () => {
+var readView = () => {
   try {
-    return new Set(JSON.parse(localStorage.getItem(STORAGE.spaces) ?? "[]"));
+    const value = JSON.parse(localStorage.getItem(STORAGE.spaces) ?? "null");
+    return typeof value === "string" ? value : "all";
   } catch {
-    return /* @__PURE__ */ new Set();
+    return "all";
   }
 };
-var writeFolds = (set) => {
+var writeView = (view) => {
   try {
-    localStorage.setItem(STORAGE.spaces, JSON.stringify([...set]));
+    localStorage.setItem(STORAGE.spaces, JSON.stringify(view));
   } catch {
   }
 };
@@ -6734,16 +6727,12 @@ function TeamSidebar(props) {
     ];
     return entries2.sort((a, b) => Number(Boolean(b.item.pinned)) - Number(Boolean(a.item.pinned)) || b.at - a.at);
   }, [roster, updated]);
-  const [folds, setFolds] = (0, import_react11.useState)(readFolds());
-  const toggleFold = (id) => setFolds((current) => {
-    const next = new Set(current);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    writeFolds(next);
-    return next;
-  });
+  const [view, setView] = (0, import_react11.useState)(readView());
+  const pick2 = (id) => {
+    setView(id);
+    writeView(id);
+  };
   const [unlocked, setUnlocked] = (0, import_react11.useState)(readUnlocks());
-  const [asking, setAsking] = (0, import_react11.useState)(null);
   const unlock = async (id, pin) => {
     if (await actions.checkSpacePin(id, pin) !== true) return false;
     setUnlocked((current) => {
@@ -6752,26 +6741,23 @@ function TeamSidebar(props) {
       writeUnlocks(next);
       return next;
     });
-    setAsking(null);
     return true;
   };
-  const sections = (0, import_react11.useMemo)(() => {
-    const spaces = roster.spaces ?? [];
-    if (!wide || spaces.length === 0) return [{ id: "", entries: order }];
-    const bySpace = new Map(spaces.map((space) => [space.id, []]));
-    const rest = [];
-    for (const entry of order) {
-      const bucket = bySpace.get(entry.item.space);
-      if (bucket === void 0) rest.push(entry);
-      else bucket.push(entry);
+  const spaces = roster.spaces ?? [];
+  const spaceIds = (0, import_react11.useMemo)(() => new Set(spaces.map((space) => space.id)), [spaces]);
+  const chosen = spaces.find((space) => space.id === view);
+  const selected = view === "ungrouped" || chosen !== void 0 ? view : "all";
+  const chosenLocked = chosen !== void 0 && chosen.locked === true && !unlocked.has(chosen.id);
+  const shown = (0, import_react11.useMemo)(() => {
+    if (!wide || spaces.length === 0) return order;
+    if (chosen !== void 0) {
+      if (chosenLocked) return [];
+      return order.filter((entry) => entry.item.space === chosen.id);
     }
-    const sections2 = [{ id: "", entries: rest }];
-    for (const space of spaces) {
-      const entries2 = bySpace.get(space.id);
-      if (entries2.length > 0) sections2.push({ id: space.id, space, entries: entries2 });
-    }
-    return sections2;
-  }, [order, roster.spaces, wide]);
+    if (selected === "ungrouped") return order.filter((entry) => entry.item.space === void 0 || !spaceIds.has(entry.item.space));
+    const sealed = new Set(spaces.filter((space) => space.locked === true && !unlocked.has(space.id)).map((space) => space.id));
+    return order.filter((entry) => entry.item.space === void 0 || !sealed.has(entry.item.space));
+  }, [order, spaces, spaceIds, chosen, chosenLocked, selected, unlocked, wide]);
   const main = roster.byId[roster.mainBotId];
   useListGlide(listRef, wide, order.map((entry) => entry.item.id).join(","));
   useLandOnMainBot(roster, useSessions, actions);
@@ -6800,19 +6786,26 @@ function TeamSidebar(props) {
       (0, import_react11.createElement)("button", { type: "button", className: "bt-round", "aria-label": t("New…"), title: t("New…"), onClick: () => actions.openNewChat("new") }, (0, import_react11.createElement)(PlusIcon))
     ),
     wide && roster.readOnly ? (0, import_react11.createElement)("div", { className: "bt-hint bt-read-only", role: "status" }, hostText(roster.readOnly)) : null,
+    wide && spaces.length > 0 ? (0, import_react11.createElement)(
+      "div",
+      { className: "bt-space-pick" },
+      (0, import_react11.createElement)(
+        "select",
+        { className: "bt-select", "aria-label": t("Space"), value: selected, onChange: (event) => pick2(event.target.value) },
+        (0, import_react11.createElement)("option", { value: "all" }, t("All")),
+        (0, import_react11.createElement)("option", { value: "ungrouped" }, t("Ungrouped")),
+        spaces.map((space) => (0, import_react11.createElement)(
+          "option",
+          { key: space.id, value: space.id },
+          space.locked === true && !unlocked.has(space.id) ? `${space.name} · ${t("Locked")}` : space.name
+        ))
+      )
+    ) : null,
     (0, import_react11.createElement)(
       "div",
       { ref: listRef, className: "bt-list", role: "region", "aria-label": t("Bot list") },
       main ? (0, import_react11.createElement)(BotRow, { ...rowProps, bot: main, marked: markedUnread[main.id] === true }) : roster.ready ? null : (0, import_react11.createElement)("div", { className: "bt-hint" }, t("Setting up your Main Bot…")),
-      sections.map((section) => {
-        const locked = section.space?.locked === true && !unlocked.has(section.id);
-        return (0, import_react11.createElement)(
-          import_react11.Fragment,
-          { key: section.id || "ungrouped" },
-          sections.length > 1 ? (0, import_react11.createElement)(SpaceHead, { space: section.space, count: section.entries.length, folded: folds.has(section.id), locked, onToggle: () => locked ? setAsking(asking === section.id ? null : section.id) : toggleFold(section.id) }) : null,
-          locked ? asking === section.id ? (0, import_react11.createElement)(SpacePinForm, { onUnlock: (pin) => unlock(section.id, pin) }) : null : folds.has(section.id) ? null : section.entries.map((entry) => entry.kind === "bot" ? (0, import_react11.createElement)(BotRow, { key: entry.item.id, ...rowProps, bot: entry.item, marked: markedUnread[entry.item.id] === true }) : entry.kind === "room" ? (0, import_react11.createElement)(RoomRow, { key: entry.item.id, ...rowProps, room: entry.item, marked: markedUnread[entry.item.id] === true }) : (0, import_react11.createElement)(AgentRow, { key: entry.item.id, ...rowProps, agent: entry.item, marked: markedUnread[entry.item.id] === true }))
-        );
-      })
+      chosenLocked ? (0, import_react11.createElement)(SpacePinForm, { onUnlock: (pin) => unlock(chosen.id, pin) }) : shown.map((entry) => entry.kind === "bot" ? (0, import_react11.createElement)(BotRow, { key: entry.item.id, ...rowProps, bot: entry.item, marked: markedUnread[entry.item.id] === true }) : entry.kind === "room" ? (0, import_react11.createElement)(RoomRow, { key: entry.item.id, ...rowProps, room: entry.item, marked: markedUnread[entry.item.id] === true }) : (0, import_react11.createElement)(AgentRow, { key: entry.item.id, ...rowProps, agent: entry.item, marked: markedUnread[entry.item.id] === true }))
     )
   );
 }
@@ -7239,14 +7232,8 @@ var SIDEBAR_CSS = `
 @keyframes bt-agent-row-in{from{opacity:0;filter:blur(4px)}to{opacity:1;filter:blur(0)}}
 @media (prefers-reduced-motion:reduce){.bt-agent-sub{transition:none}.bt-agent-sub .bt-agent-sub-row{animation:none}}
 
-/* Space section headers divide the list. */
-.bt-space-head{display:flex;align-items:center;gap:5px;width:100%;margin:10px 4px 2px;padding:4px 8px 4px 4px;border:0;border-radius:8px;background:none;color:var(--bt-ink-3);font:inherit;font-size:11.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;text-align:left;cursor:pointer}
-.bt-space-head:hover{color:var(--bt-ink)}
-.bt-space-chev{display:inline-flex;color:var(--bt-ink-3);transform:rotate(90deg);transition:transform .15s ease}
-.bt-space-chev.is-fold{transform:rotate(0)}
-.bt-space-dot{flex:none;width:8px;height:8px;border-radius:50%}
-.bt-space-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.bt-space-count{flex:none;font-weight:500;opacity:.75}
+/* The space picker sits over the list; a locked space shows its PIN row there. */
+.bt-space-pick{flex:none;margin:2px 8px 4px}
 .bt-space-pin{display:flex;align-items:center;gap:6px;margin:2px 4px 4px;padding:0 8px 0 18px}
 .bt-space-pin .bt-bs-input{flex:1;width:auto;text-align:left}
 .bt-space-pin-err{font-size:11.5px;color:var(--bt-danger)}

@@ -154,6 +154,7 @@ const ZH = {
   // Spaces
   Space: '空间',
   'Spaces · {count}': '空间 · {count}',
+  All: '全部',
   Ungrouped: '未分组',
   'New space': '新建空间',
   'Space name': '空间名',
@@ -1156,6 +1157,7 @@ const VI = {
   // Spaces
   Space: 'Khu vực',
   'Spaces · {count}': 'Khu vực · {count}',
+  All: 'Tất cả',
   Ungrouped: 'Chưa nhóm',
   'New space': 'Khu vực mới',
   'Space name': 'Tên khu vực',

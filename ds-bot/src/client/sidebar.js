@@ -3,8 +3,7 @@ import { createPortal } from 'react-dom'
 import { FishLogo } from '@deepseek-ai/dsh-client-ui-primitives'
 import { isMainOf } from './sources.js'
 import { currentPart, previewOf, relativeShort } from './text.js'
-import { PlusIcon, SearchIcon, SidebarIcon, GaugeIcon, PlugIcon, ClockIcon, GearIcon, PinMarkIcon, ConnectorIcon, SwitchIcon, CloudDownloadIcon, ChevronRightIcon, LockIcon } from './icons.js'
-import { paintCss } from './inks.js'
+import { PlusIcon, SearchIcon, SidebarIcon, GaugeIcon, PlugIcon, ClockIcon, GearIcon, PinMarkIcon, ConnectorIcon, SwitchIcon, CloudDownloadIcon } from './icons.js'
 import { STORAGE } from './storage.js'
 import { MAIN_LOOK } from './characters.js'
 import { botState, BotMark, BotAvatar, RoomAvatar } from './mark.js'
@@ -222,18 +221,8 @@ function AgentRow({ agent, actions, useSessions, useSessionStatus, useUi, wide, 
         })))))
 }
 
-// A space section's header: chevron (or a lock while the PIN is unentered),
-// optional color dot, name, member count.
-function SpaceHead({ space, count, folded, locked, onToggle }) {
-  return h('button', { type: 'button', className: 'bt-space-head', 'aria-expanded': String(!folded && !locked), onClick: onToggle },
-    h('span', { className: `bt-space-chev${folded || locked ? ' is-fold' : ''}`, 'aria-hidden': true }, locked ? h(LockIcon) : h(ChevronRightIcon)),
-    space?.color ? h('span', { className: 'bt-space-dot', style: { background: paintCss(space.color) }, 'aria-hidden': true }) : null,
-    h('span', { className: 'bt-space-name' }, space?.name ?? t('Ungrouped')),
-    h('span', { className: 'bt-space-count', 'aria-hidden': true }, locked ? t('Locked') : String(count)))
-}
-
-// The inline PIN prompt a locked space opens on click. Soft gate: the roster is
-// already on the page — this keeps the section closed for casual eyes only.
+// The inline PIN prompt a locked space shows in place of its members. Soft gate:
+// the roster is already on the page — this keeps the space closed for casual eyes only.
 function SpacePinForm({ onUnlock }) {
   const [pin, setPin] = useState('')
   const [wrong, setWrong] = useState(false)
@@ -254,12 +243,16 @@ function SpacePinForm({ onUnlock }) {
     wrong ? h('span', { className: 'bt-space-pin-err', role: 'alert' }, t('Wrong PIN')) : null)
 }
 
-// Collapsed space sections, remembered across reloads.
-const readFolds = () => {
-  try { return new Set(JSON.parse(localStorage.getItem(STORAGE.spaces) ?? '[]')) } catch { return new Set() }
+// The space the list shows: 'all', 'ungrouped', or a space id. The key once held
+// folded sections as an array; anything but a string reads as 'all' again.
+const readView = () => {
+  try {
+    const value = JSON.parse(localStorage.getItem(STORAGE.spaces) ?? 'null')
+    return typeof value === 'string' ? value : 'all'
+  } catch { return 'all' }
 }
-const writeFolds = (set) => {
-  try { localStorage.setItem(STORAGE.spaces, JSON.stringify([...set])) } catch { /* storage unavailable */ }
+const writeView = (view) => {
+  try { localStorage.setItem(STORAGE.spaces, JSON.stringify(view)) } catch { /* storage unavailable */ }
 }
 
 // Spaces whose PIN was entered on this browser; unlocked state does not roam.
@@ -322,16 +315,9 @@ export function TeamSidebar(props) {
     return entries.sort((a, b) => Number(Boolean(b.item.pinned)) - Number(Boolean(a.item.pinned)) || b.at - a.at)
   }, [roster, updated])
   // Evaluated now, not lazily: the tests render the sidebar outside React.
-  const [folds, setFolds] = useState(readFolds())
-  const toggleFold = (id) => setFolds((current) => {
-    const next = new Set(current)
-    if (next.has(id)) next.delete(id)
-    else next.add(id)
-    writeFolds(next)
-    return next
-  })
+  const [view, setView] = useState(readView())
+  const pick = (id) => { setView(id); writeView(id) }
   const [unlocked, setUnlocked] = useState(readUnlocks())
-  const [asking, setAsking] = useState(null)
   const unlock = async (id, pin) => {
     if (await actions.checkSpacePin(id, pin) !== true) return false
     setUnlocked((current) => {
@@ -340,28 +326,26 @@ export function TeamSidebar(props) {
       writeUnlocks(next)
       return next
     })
-    setAsking(null)
     return true
   }
-  // With spaces the list splits: Ungrouped first, then each non-empty space in
-  // creation order. The rail shows no headers, so it keeps the flat list.
-  const sections = useMemo(() => {
-    const spaces = roster.spaces ?? []
-    if (!wide || spaces.length === 0) return [{ id: '', entries: order }]
-    const bySpace = new Map(spaces.map(space => [space.id, []]))
-    const rest = []
-    for (const entry of order) {
-      const bucket = bySpace.get(entry.item.space)
-      if (bucket === undefined) rest.push(entry)
-      else bucket.push(entry)
+  // The space picker filters the list: 'ungrouped' and a space show their members;
+  // 'all' shows everything the browser may see, so a locked space's members stay
+  // out until its PIN opens it here. A picked id that no longer exists reads 'all'.
+  const spaces = roster.spaces ?? []
+  const spaceIds = useMemo(() => new Set(spaces.map(space => space.id)), [spaces])
+  const chosen = spaces.find(space => space.id === view)
+  const selected = view === 'ungrouped' || chosen !== undefined ? view : 'all'
+  const chosenLocked = chosen !== undefined && chosen.locked === true && !unlocked.has(chosen.id)
+  const shown = useMemo(() => {
+    if (!wide || spaces.length === 0) return order
+    if (chosen !== undefined) {
+      if (chosenLocked) return []
+      return order.filter(entry => entry.item.space === chosen.id)
     }
-    const sections = [{ id: '', entries: rest }]
-    for (const space of spaces) {
-      const entries = bySpace.get(space.id)
-      if (entries.length > 0) sections.push({ id: space.id, space, entries })
-    }
-    return sections
-  }, [order, roster.spaces, wide])
+    if (selected === 'ungrouped') return order.filter(entry => entry.item.space === undefined || !spaceIds.has(entry.item.space))
+    const sealed = new Set(spaces.filter(space => space.locked === true && !unlocked.has(space.id)).map(space => space.id))
+    return order.filter(entry => entry.item.space === undefined || !sealed.has(entry.item.space))
+  }, [order, spaces, spaceIds, chosen, chosenLocked, selected, unlocked, wide])
   const main = roster.byId[roster.mainBotId]
   useListGlide(listRef, wide, order.map(entry => entry.item.id).join(','))
   useLandOnMainBot(roster, useSessions, actions)
@@ -384,21 +368,20 @@ export function TeamSidebar(props) {
           h(UpdateButton, { useUpdate: props.useUpdate, actions }),
           h('button', { type: 'button', className: 'bt-round', 'aria-label': t('New…'), title: t('New…'), onClick: () => actions.openNewChat('new') }, h(PlusIcon))),
     wide && roster.readOnly ? h('div', { className: 'bt-hint bt-read-only', role: 'status' }, hostText(roster.readOnly)) : null,
+    wide && spaces.length > 0 ? h('div', { className: 'bt-space-pick' },
+      h('select', { className: 'bt-select', 'aria-label': t('Space'), value: selected, onChange: event => pick(event.target.value) },
+        h('option', { value: 'all' }, t('All')),
+        h('option', { value: 'ungrouped' }, t('Ungrouped')),
+        spaces.map(space => h('option', { key: space.id, value: space.id },
+          space.locked === true && !unlocked.has(space.id) ? `${space.name} · ${t('Locked')}` : space.name)))) : null,
     h('div', { ref: listRef, className: 'bt-list', role: 'region', 'aria-label': t('Bot list') },
       main ? h(BotRow, { ...rowProps, bot: main, marked: markedUnread[main.id] === true }) : roster.ready ? null : h('div', { className: 'bt-hint' }, t('Setting up your Main Bot…')),
-      sections.map(section => {
-        const locked = section.space?.locked === true && !unlocked.has(section.id)
-        return h(Fragment, { key: section.id || 'ungrouped' },
-          sections.length > 1 ? h(SpaceHead, { space: section.space, count: section.entries.length, folded: folds.has(section.id), locked, onToggle: () => locked ? setAsking(asking === section.id ? null : section.id) : toggleFold(section.id) }) : null,
-          locked ? (asking === section.id ? h(SpacePinForm, { onUnlock: pin => unlock(section.id, pin) }) : null)
-            : folds.has(section.id) ? null
-              : section.entries.map(entry => (entry.kind === 'bot'
-            ? h(BotRow, { key: entry.item.id, ...rowProps, bot: entry.item, marked: markedUnread[entry.item.id] === true })
-            : entry.kind === 'room'
-              ? h(RoomRow, { key: entry.item.id, ...rowProps, room: entry.item, marked: markedUnread[entry.item.id] === true })
-              : h(AgentRow, { key: entry.item.id, ...rowProps, agent: entry.item, marked: markedUnread[entry.item.id] === true }))))
-        })
-    ))
+      chosenLocked ? h(SpacePinForm, { onUnlock: pin => unlock(chosen.id, pin) })
+        : shown.map(entry => (entry.kind === 'bot'
+          ? h(BotRow, { key: entry.item.id, ...rowProps, bot: entry.item, marked: markedUnread[entry.item.id] === true })
+          : entry.kind === 'room'
+            ? h(RoomRow, { key: entry.item.id, ...rowProps, room: entry.item, marked: markedUnread[entry.item.id] === true })
+            : h(AgentRow, { key: entry.item.id, ...rowProps, agent: entry.item, marked: markedUnread[entry.item.id] === true })))))
 }
 
 // The update button at the sidebar's top right: a cloud while a newer DS Bot —
@@ -775,14 +758,8 @@ export const SIDEBAR_CSS = `
 @keyframes bt-agent-row-in{from{opacity:0;filter:blur(4px)}to{opacity:1;filter:blur(0)}}
 @media (prefers-reduced-motion:reduce){.bt-agent-sub{transition:none}.bt-agent-sub .bt-agent-sub-row{animation:none}}
 
-/* Space section headers divide the list. */
-.bt-space-head{display:flex;align-items:center;gap:5px;width:100%;margin:10px 4px 2px;padding:4px 8px 4px 4px;border:0;border-radius:8px;background:none;color:var(--bt-ink-3);font:inherit;font-size:11.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;text-align:left;cursor:pointer}
-.bt-space-head:hover{color:var(--bt-ink)}
-.bt-space-chev{display:inline-flex;color:var(--bt-ink-3);transform:rotate(90deg);transition:transform .15s ease}
-.bt-space-chev.is-fold{transform:rotate(0)}
-.bt-space-dot{flex:none;width:8px;height:8px;border-radius:50%}
-.bt-space-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.bt-space-count{flex:none;font-weight:500;opacity:.75}
+/* The space picker sits over the list; a locked space shows its PIN row there. */
+.bt-space-pick{flex:none;margin:2px 8px 4px}
 .bt-space-pin{display:flex;align-items:center;gap:6px;margin:2px 4px 4px;padding:0 8px 0 18px}
 .bt-space-pin .bt-bs-input{flex:1;width:auto;text-align:left}
 .bt-space-pin-err{font-size:11.5px;color:var(--bt-danger)}
