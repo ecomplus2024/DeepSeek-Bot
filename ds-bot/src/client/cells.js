@@ -11,6 +11,7 @@ import { dateLocale, t } from './i18n.js'
 import { failureLabel } from './diagnostics.js'
 import { turnReasoning } from './turn-reasoning.js'
 import { FOLD_AT, FOLD_HUGE, stripLongNote, useFold } from './fold.js'
+import { FileChip } from './user-message.js'
 import { usePhone, viewportHeight } from './mobile.js'
 
 // -------------------------------------------------------------------------
@@ -205,13 +206,15 @@ function EventLine({ prefix, bots, joiner = t('and'), onOpen, whole = false }) {
 }
 
 // One Bot message inside a group chat: avatar, name (with its group role), bubble.
-function GroupMessage({ bot, text, texts = [text], room, roster, actions, msgKey, useUi, whole }) {
+// `file`: the post went past what a message holds, so it is also a stored file.
+function GroupMessage({ bot, text, texts = [text], room, roster, actions, msgKey, useUi, whole, file }) {
   const lead = h('button', { type: 'button', className: 'bt-lead', 'aria-label': t("Open {name}'s chat", { name: bot.name }), onClick: () => actions.openSession(bot.id) },
     h(BotMark, { bot, size: 22 }))
   return h('div', { className: 'bt-group-msg' },
     h('span', { className: 'bt-group-name', style: { color: inkText(colorOf(bot)) } }, bot.name,
       room?.admin === bot.id ? h('span', { className: 'bt-group-role' }, t('Admin')) : null),
-    h(Bubbles, { texts, roster, selfId: bot.id, actions, sessionId: room?.id, msgKey, useUi, lead, whole }))
+    h(Bubbles, { texts, roster, selfId: bot.id, actions, sessionId: room?.id, msgKey, useUi, lead, whole }),
+    file ? h(FileChip, { file }) : null)
 }
 
 // A member's messages in a row, as one block under its name: what it says while it
@@ -403,7 +406,7 @@ export function TriggerCell({ node, sessionId, useRoster, useSessions, useTurnCl
         const text = stripHeader(contentText(data.content))
         // A trigger's data carries no turn; its event seq is the one durable name of this post.
         return h(GroupMessage, {
-          bot: poster, text: file ? stripLongNote(text) : text, room, roster, actions, msgKey: `${sessionId}:post:${data.seq ?? node.key}`, useUi,
+          bot: poster, text: file ? stripLongNote(text) : text, room, roster, actions, msgKey: `${sessionId}:post:${data.seq ?? node.key}`, useUi, file,
           whole: file ? { length: source.length, load: () => actions.fileText(file) } : undefined,
         })
       }

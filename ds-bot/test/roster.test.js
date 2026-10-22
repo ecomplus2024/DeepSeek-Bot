@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { format } from 'node:util'
 import { apply } from '../index.js'
-import { fakeContext } from './fake-ctx.js'
+import { fakeAttachments, fakeContext } from './fake-ctx.js'
 
 // Enough of the dsh services for the roster to make Sessions; kickoff messages are dropped.
 function start(team, { models = [], reasoning = {}, archiveError } = {}) {
@@ -49,8 +49,10 @@ function start(team, { models = [], reasoning = {}, archiveError } = {}) {
     sessions: { flush: async () => {} },
   })
   let route
+  const routes = new Map()
   const register = ctx.connection.fetch.register
   ctx.connection.fetch.register = (options) => {
+    routes.set(options.path, options)
     route = options
     return register(options)
   }
@@ -63,7 +65,7 @@ function start(team, { models = [], reasoning = {}, archiveError } = {}) {
     await ctx.dispose()
     rmSync(home, { recursive: true, force: true, maxRetries: 5 })
   }
-  return { call, stop, home, sent, selected, ctx, archived, warnings }
+  return { call, stop, home, sent, selected, ctx, archived, warnings, routes }
 }
 
 const settle = () => new Promise(resolve => setTimeout(resolve, 20))
@@ -708,4 +710,25 @@ test('a space PIN locks the section; the hash never reaches the client', async (
   const cleared = (await call('update-space', { id, pin: null })).value
   assert.equal(cleared.spaces.find(entry => entry.id === id).locked, false)
   assert.equal((await call('check-space-pin', { id, pin: '2468' })).value, false)
+})
+
+test('a stored file downloads over the API file route', async (t) => {
+  const { ctx, routes, stop } = start()
+  t.after(stop)
+  const store = fakeAttachments()
+  ctx.get = name => (name === 'attachments' ? store : undefined)
+  const route = routes.get('/api/bot/file')
+  const text = '文件内容 and some ASCII bytes'
+  const ref = await store.saveFile({ data: new TextEncoder().encode(text), name: 'Báo cáo.txt' })
+  const url = `http://localhost/api/bot/file?attachmentId=${encodeURIComponent(ref.attachmentId)}&name=${encodeURIComponent(ref.name)}&bytes=${ref.bytes}`
+  const response = await route.fetch(new Request(url))
+  assert.equal(response.status, 200)
+  assert.match(response.headers.get('content-disposition'), /^attachment/)
+  assert.match(response.headers.get('content-disposition'), /B%C3%A1o%20c%C3%A1o\.txt/)
+  assert.equal(new TextDecoder().decode(await response.arrayBuffer()), text)
+  // No id, no attachments service, or an unknown id each answer 404.
+  assert.equal((await route.fetch(new Request('http://localhost/api/bot/file'))).status, 404)
+  assert.equal((await route.fetch(new Request('http://localhost/api/bot/file?attachmentId=sha256:99'))).status, 404)
+  ctx.get = () => undefined
+  assert.equal((await route.fetch(new Request(url))).status, 404)
 })

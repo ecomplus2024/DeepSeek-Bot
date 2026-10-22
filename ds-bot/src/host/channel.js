@@ -400,18 +400,69 @@ export function install(rt) {
     }
   }
 
-  // An exact Fetch route on the shared /api channel; the browser authenticates with its session cookie.
-  ctx.effect(() => ctx.connection.fetch.register({
-    path: ROUTE,
-    methods: ['POST'],
-    requestBody: 'buffered',
-    fetch: async (request) => {
-      let body
-      try { body = await request.json() } catch { body = {} }
-      const result = await handle(String(body?.endpoint ?? ''), body?.payload, request.signal)
-      return new Response(JSON.stringify(result), { status: 200, headers: { 'content-type': 'application/json' } })
-    },
-  }), 'ds-bot: api route')
+  // A stored file (a Bot's long message, an upload) downloads over GET so the browser
+  // saves it as a file; the shared /api channel still checks the session cookie. The
+  // first chunk is read before the answer's status, so a missing file is a clean 404.
+  const fileResponse = async (request) => {
+    const url = new URL(request.url)
+    const attachments = ctx.get?.('attachments')
+    const id = url.searchParams.get('attachmentId') ?? ''
+    if (attachments === undefined || id === '') return new Response('No such file', { status: 404 })
+    const ref = {
+      attachmentId: id,
+      name: url.searchParams.get('name') || 'file',
+      bytes: Number(url.searchParams.get('bytes')) || 0,
+    }
+    let iterator
+    try {
+      iterator = attachments.readFileStream(ref, request.signal)[Symbol.asyncIterator]()
+    } catch { return new Response('This file cannot be read here', { status: 404 }) }
+    let pending
+    try { pending = await iterator.next() } catch { return new Response('This file cannot be read here', { status: 404 }) }
+    const body = new ReadableStream({
+      async pull(controller) {
+        if (pending !== undefined) {
+          if (pending.done) { controller.close(); return }
+          controller.enqueue(pending.value)
+          pending = undefined
+        }
+        try {
+          const step = await iterator.next()
+          if (step.done) controller.close()
+          else controller.enqueue(step.value)
+        } catch (error) { controller.error(error) }
+      },
+      async cancel() { await iterator.return?.().catch(() => {}) },
+    })
+    const ascii = ref.name.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_')
+    return new Response(body, {
+      status: 200,
+      headers: {
+        'content-type': 'application/octet-stream',
+        'content-disposition': `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(ref.name).replace(/'/g, '%27')}`,
+        ...(ref.bytes > 0 ? { 'content-length': String(ref.bytes) } : {}),
+      },
+    })
+  }
+
+  // Exact Fetch routes on the shared /api channel; the browser authenticates with its
+  // session cookie. The file route registers first, so a test that keeps the last
+  // registered route still gets the POST one.
+  ctx.effect(() => {
+    const file = ctx.connection.fetch.register({ path: `${ROUTE}/file`, methods: ['GET'], requestBody: 'buffered', fetch: fileResponse })
+    const api = ctx.connection.fetch.register({
+      path: ROUTE,
+      methods: ['POST'],
+      requestBody: 'buffered',
+      fetch: async (request) => {
+        let body
+        try { body = await request.json() } catch { body = {} }
+        const result = await handle(String(body?.endpoint ?? ''), body?.payload, request.signal)
+        return new Response(JSON.stringify(result), { status: 200, headers: { 'content-type': 'application/json' } })
+      },
+    })
+    return async () => { await file(); await api() }
+  }, 'ds-bot: api route')
 
   ctx.effect(() => {
     void rt.load()

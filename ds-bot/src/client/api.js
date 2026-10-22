@@ -2,6 +2,9 @@ import { hostText, t } from './i18n.js'
 import { markNoted, noteClientError } from './diagnostics.js'
 
 const ROUTE = 'api/bot'
+// Stored files download over this exact GET route; document-relative like ROUTE, so it
+// keeps working under a mounted base path and through the remote gate.
+export const fileUrl = file => `${ROUTE}/file?attachmentId=${encodeURIComponent(file.attachmentId)}&name=${encodeURIComponent(file.name ?? 'file')}&bytes=${file.bytes ?? 0}`
 // Refusals carry a message meant for the user, who sees it where they acted.
 const REFUSALS = new Set(['bot/refused', 'bot/invalid', 'bot/read-only', 'bot/not-found', 'bot/browser-off'])
 

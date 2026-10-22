@@ -197,6 +197,8 @@ body[data-bt-motion=quiet] .bt-mark[data-poke]{cursor:default}
 button.bt-lead{border:0;background:none;padding:0;cursor:pointer}
 /* Rows without the avatar start where the bubble beside it starts: 22px avatar + 8px gap. */
 .bt-astack[data-lead]>.bt-msg:not(:last-child)>.bt-msg-line,.bt-astack[data-lead] .bt-reacts{margin-left:30px}
+/* A file chip under a group message starts where its bubble does. */
+.bt-group-msg>.bt-ufile{margin-left:30px}
 .bt-group-name{font-size:12px;line-height:16px;font-weight:500;margin-left:42px}
 .bt-x{border:0;background:none;color:var(--bt-ink-2);cursor:pointer;width:24px;height:24px;border-radius:6px;font-size:16px;line-height:24px;padding:0;transition:background-color .12s ease,color .12s ease,${spring(SPRING_TAP, 'scale')}}
 .bt-x:hover{background:var(--bt-hover);color:var(--bt-ink)}

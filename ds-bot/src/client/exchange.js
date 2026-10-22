@@ -4,6 +4,7 @@ import { dayLabel } from './text.js'
 import { colorOf, BotMark } from './mark.js'
 import { Bubbles } from './cells.js'
 import { stripLongNote } from './fold.js'
+import { FileChip } from './user-message.js'
 import { useEscape, usePaneLeft } from './overlay-hooks.js'
 import { t } from './i18n.js'
 
@@ -56,7 +57,8 @@ export function ExchangeDialog({ pair, roster, actions }) {
                 showDay ? h('time', { className: 'bt-time' }, dayLabel(entry.time)) : null,
                 h('div', { className: 'bt-group-msg' },
                   h('span', { className: 'bt-group-name', style: { color: inkText(colorOf(bot)) } }, bot.name),
-                  h(Bubbles, { texts: [stripLongNote(entry.text)], roster, selfId: bot.id, actions, whole, lead: h('span', { className: 'bt-lead' }, h(BotMark, { bot: bot, size: 22 })) })))
+                  h(Bubbles, { texts: [stripLongNote(entry.text)], roster, selfId: bot.id, actions, whole, lead: h('span', { className: 'bt-lead' }, h(BotMark, { bot: bot, size: 22 })) }),
+                  (entry.files ?? []).map((file, index) => h(FileChip, { key: index, file }))))
             })),
       h('div', { className: 'bt-dialog-foot' }, h('button', { type: 'button', className: 'bt-soft', onClick: close }, t('Close Chat')))))
 }

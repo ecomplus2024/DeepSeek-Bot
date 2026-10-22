@@ -2,7 +2,8 @@ import { createElement as h, Fragment, useState } from 'react'
 import * as ui from '@deepseek-ai/dsh-client-ui-primitives'
 import { mentionSpans } from '../shared/mentions.js'
 import { BotMark } from './mark.js'
-import { CheckIcon, CopyIcon } from './icons.js'
+import { CheckIcon, CopyIcon, DownloadIcon } from './icons.js'
+import { fileUrl } from './api.js'
 import { dateLocale, t } from './i18n.js'
 import { useFold } from './fold.js'
 
@@ -56,17 +57,22 @@ function UserText({ text, bots, referenceLabels, skillNames, references, actions
     : h(Fragment, { key: index }, ui.projectUserText(part.text, referenceLabels, skillNames, 'skill', references))))
 }
 
+// A stored file shown as a chip; clicking it downloads the file over the API route.
+export function FileChip({ file }) {
+  const meta = [ui.fileExtension?.(file.name)?.toUpperCase().slice(0, 8), ui.fileSizeText?.(file.bytes)].filter(Boolean).join(' · ')
+  return h('a', { className: 'bt-ufile', title: file.name, href: fileUrl(file), download: file.name },
+    ui.FileTypeIcon ? h(ui.FileTypeIcon, { path: file.name, className: 'bt-ufile-icon' }) : null,
+    h('span', { className: 'bt-ufile-text' }, h('span', { className: 'bt-ufile-name' }, file.name), meta ? h('span', { className: 'bt-ufile-meta' }, meta) : null),
+    h('span', { className: 'bt-ufile-dl' }, h(DownloadIcon)))
+}
+
 function Attachments({ attachments, renderMessageImages }) {
   const compact = attachments.length > 1
   return h('div', { className: 'bt-uattach' }, attachments.map((block, index) => {
     if (block.type === 'image') {
       return renderMessageImages ? h(Fragment, { key: index }, renderMessageImages({ images: [{ attachment: block.attachment }], align: 'end', compact })) : null
     }
-    const file = block.attachment
-    const meta = [ui.fileExtension?.(file.name)?.toUpperCase().slice(0, 8), ui.fileSizeText?.(file.bytes)].filter(Boolean).join(' · ')
-    return h('span', { key: index, className: 'bt-ufile', title: file.name },
-      ui.FileTypeIcon ? h(ui.FileTypeIcon, { path: file.name, className: 'bt-ufile-icon' }) : null,
-      h('span', { className: 'bt-ufile-text' }, h('span', { className: 'bt-ufile-name' }, file.name), meta ? h('span', { className: 'bt-ufile-meta' }, meta) : null))
+    return h(FileChip, { key: index, file: block.attachment })
   }))
 }
 
@@ -110,7 +116,10 @@ export const USER_MESSAGE_CSS = `
 .bt-umention:hover{text-decoration:underline;text-underline-offset:2px}
 .bt-umention>:first-child{flex:none}
 .bt-uattach{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;max-width:100%}
-.bt-ufile{display:inline-flex;align-items:center;gap:10px;box-sizing:border-box;width:240px;min-height:64px;padding:8px 12px;border-radius:18px;border:.5px solid var(--bt-line-2);background:var(--bt-card)}
+.bt-ufile{display:inline-flex;align-items:center;gap:10px;box-sizing:border-box;width:240px;min-height:64px;padding:8px 12px;border-radius:18px;border:.5px solid var(--bt-line-2);background:var(--bt-card);text-decoration:none;cursor:pointer}
+.bt-ufile:hover{border-color:var(--bt-ink-3)}
+.bt-ufile-dl{flex:none;display:inline-flex;color:var(--bt-ink-3)}
+.bt-ufile-dl svg{width:16px;height:16px}
 .bt-ufile-icon{flex:none;width:28px;height:28px}
 .bt-ufile-text{display:flex;flex-direction:column;min-width:0}
 .bt-ufile-name{font-size:14px;line-height:22px;font-weight:500;color:var(--bt-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
