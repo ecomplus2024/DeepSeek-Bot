@@ -141,7 +141,10 @@ function proxy(req, res, cookie) {
     res.writeHead(answer.statusCode ?? 502, out)
     answer.pipe(res)
   })
-  upstream.on('error', () => send(res, 502, { 'content-type': 'text/plain' }, 'DS Bot upstream is not reachable.'))
+  upstream.on('error', () => {
+    if (res.headersSent) { res.destroy(); return }
+    send(res, 502, { 'content-type': 'text/plain' }, 'DS Bot upstream is not reachable.')
+  })
   req.pipe(upstream)
 }
 
@@ -180,6 +183,7 @@ const server = createServer(async (req, res) => {
     }
     proxy(req, res, await upstreamSession())
   } catch (error) {
+    if (res.headersSent) { res.destroy(); return }
     send(res, 502, { 'content-type': 'text/plain; charset=utf-8' }, `${error.message}\n`)
   }
 })
