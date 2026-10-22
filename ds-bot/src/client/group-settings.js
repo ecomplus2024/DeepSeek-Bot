@@ -109,6 +109,11 @@ export function GroupSettingsForm({ room, roster, actions, run, onDeleted }) {
           : admin ? t('{name} leads this group: it can call members with @Name, change the group, and post here.', { name: admin.name })
             : t('No admin yet. An admin can call members with @Name, change the group, and post here.')))),
     h(Card, { title: t('Sidebar') },
+      (roster.spaces ?? []).length === 0 ? null : h('div', { className: 'bt-set-row bt-bs-row' },
+        h('span', { className: 'bt-set-copy' }, h('span', { className: 'bt-bs-label' }, t('Space')), h('span', { className: 'bt-set-hint' }, t('Files this group under a sidebar section.'))),
+        h('select', { className: 'bt-select', 'aria-label': t('Space'), value: room.space ?? '', onChange: event => update({ space: event.target.value === '' ? null : event.target.value }) },
+          h('option', { value: '' }, t('Ungrouped')),
+          (roster.spaces ?? []).map(space => h('option', { key: space.id, value: space.id }, space.name)))),
       h(SwitchRow, { label: t('Pin'), hint: t('Kept above the other chats.'), on: room.pinned === true, onChange: pinned => run(actions.setFlags(room.id, { pinned })) }),
       h(SwitchRow, { label: t('Hide from sidebar'), hint: t('Search still finds it.'), on: room.hidden === true, onChange: hidden => run(actions.setFlags(room.id, { hidden })) })),
     h(Card, { title: t('Manage') },
@@ -125,14 +130,16 @@ export function NewGroupForm({ roster, actions, run, onCreated, onCancel }) {
   const [admin, setAdmin] = useState(null)
   const [members, setMembers] = useState([])
   const [name, setName] = useState('')
+  const [space, setSpace] = useState('')
   const [busy, setBusy] = useState(false)
+  const spaces = roster.spaces ?? []
   const toggle = id => setMembers(list => (list.includes(id) ? list.filter(item => item !== id) : [...list, id]))
   const pickAdmin = (id) => { setAdmin(id); setMembers(list => list.filter(item => item !== id)) }
   const create = async () => {
     if (busy || admin === null || members.length === 0) return
     setBusy(true)
     let room
-    const done = await run(actions.createRoom([admin, ...members], { admin, greet: true, ...(name.trim() ? { name: name.trim() } : {}) }).then((value) => { room = value }))
+    const done = await run(actions.createRoom([admin, ...members], { admin, greet: true, ...(name.trim() ? { name: name.trim() } : {}), ...(space ? { space } : {}) }).then((value) => { room = value }))
     if (done && room) onCreated(room)
     else setBusy(false)
   }
@@ -151,6 +158,11 @@ export function NewGroupForm({ roster, actions, run, onCreated, onCancel }) {
     admin === null || members.length === 0 ? null : h('label', { className: 'bt-set-row bt-bs-row bt-ng-step' },
       h('span', { className: 'bt-set-copy' }, h('span', { className: 'bt-bs-label' }, t('Name'))),
       h('input', { className: 'bt-bs-input', value: name, maxLength: 60, placeholder: t('Name after members'), onChange: event => setName(event.target.value) })),
+    admin === null || members.length === 0 || spaces.length === 0 ? null : h('div', { className: 'bt-set-row bt-bs-row bt-ng-step' },
+      h('span', { className: 'bt-set-copy' }, h('span', { className: 'bt-bs-label' }, t('Space'))),
+      h('select', { className: 'bt-select', 'aria-label': t('Space'), value: space, onChange: event => setSpace(event.target.value) },
+        h('option', { value: '' }, t('Ungrouped')),
+        spaces.map(item => h('option', { key: item.id, value: item.id }, item.name)))),
     h('div', { className: 'bt-set-row bt-task-foot' },
       h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: onCancel }, t('Cancel')),
       h('button', { type: 'button', className: 'bt-send bt-soft-sm', disabled: busy || admin === null || members.length === 0, onClick: () => void create() }, t('Create group chat'))))

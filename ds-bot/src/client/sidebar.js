@@ -3,7 +3,9 @@ import { createPortal } from 'react-dom'
 import { FishLogo } from '@deepseek-ai/dsh-client-ui-primitives'
 import { isMainOf } from './sources.js'
 import { currentPart, previewOf, relativeShort } from './text.js'
-import { PlusIcon, SearchIcon, SidebarIcon, GaugeIcon, PlugIcon, ClockIcon, GearIcon, PinMarkIcon, ConnectorIcon, SwitchIcon, CloudDownloadIcon } from './icons.js'
+import { PlusIcon, SearchIcon, SidebarIcon, GaugeIcon, PlugIcon, ClockIcon, GearIcon, PinMarkIcon, ConnectorIcon, SwitchIcon, CloudDownloadIcon, ChevronRightIcon, LockIcon } from './icons.js'
+import { paintCss } from './inks.js'
+import { STORAGE } from './storage.js'
 import { MAIN_LOOK } from './characters.js'
 import { botState, BotMark, BotAvatar, RoomAvatar } from './mark.js'
 import { reducedMotion } from './activity-row.js'
@@ -220,6 +222,60 @@ function AgentRow({ agent, actions, useSessions, useSessionStatus, useUi, wide, 
         })))))
 }
 
+// A space section's header: chevron (or a lock while the PIN is unentered),
+// optional color dot, name, member count.
+function SpaceHead({ space, count, folded, locked, onToggle }) {
+  return h('button', { type: 'button', className: 'bt-space-head', 'aria-expanded': String(!folded && !locked), onClick: onToggle },
+    h('span', { className: `bt-space-chev${folded || locked ? ' is-fold' : ''}`, 'aria-hidden': true }, locked ? h(LockIcon) : h(ChevronRightIcon)),
+    space?.color ? h('span', { className: 'bt-space-dot', style: { background: paintCss(space.color) }, 'aria-hidden': true }) : null,
+    h('span', { className: 'bt-space-name' }, space?.name ?? t('Ungrouped')),
+    h('span', { className: 'bt-space-count', 'aria-hidden': true }, locked ? t('Locked') : String(count)))
+}
+
+// The inline PIN prompt a locked space opens on click. Soft gate: the roster is
+// already on the page — this keeps the section closed for casual eyes only.
+function SpacePinForm({ onUnlock }) {
+  const [pin, setPin] = useState('')
+  const [wrong, setWrong] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const submit = async () => {
+    if (busy || pin === '') return
+    setBusy(true)
+    try {
+      if (await onUnlock(pin)) return
+      setWrong(true)
+      setPin('')
+    } finally { setBusy(false) }
+  }
+  return h('form', { className: 'bt-space-pin', onSubmit: event => { event.preventDefault(); void submit() } },
+    h('input', { type: 'password', className: 'bt-bs-input', autoComplete: 'off', autoFocus: true, value: pin, maxLength: 64,
+      placeholder: t('Space PIN'), 'aria-label': t('Space PIN'),
+      onChange: event => { setPin(event.target.value); setWrong(false) } }),
+    wrong ? h('span', { className: 'bt-space-pin-err', role: 'alert' }, t('Wrong PIN')) : null)
+}
+
+// Collapsed space sections, remembered across reloads.
+const readFolds = () => {
+  try { return new Set(JSON.parse(localStorage.getItem(STORAGE.spaces) ?? '[]')) } catch { return new Set() }
+}
+const writeFolds = (set) => {
+  try { localStorage.setItem(STORAGE.spaces, JSON.stringify([...set])) } catch { /* storage unavailable */ }
+}
+
+// Spaces whose PIN was entered on this browser; unlocked state does not roam.
+// The remote gate can also grant one space through the ds-bot-unlocked cookie.
+const readUnlocks = () => {
+  let list = []
+  try { list = JSON.parse(localStorage.getItem(STORAGE.spaceUnlocks) ?? '[]') } catch { /* storage unavailable */ }
+  const set = new Set(list)
+  const gate = /(?:^|;\s*)ds-bot-unlocked=([^;]+)/.exec(document.cookie ?? '')?.[1]
+  if (gate) set.add(decodeURIComponent(gate))
+  return set
+}
+const writeUnlocks = (set) => {
+  try { localStorage.setItem(STORAGE.spaceUnlocks, JSON.stringify([...set])) } catch { /* storage unavailable */ }
+}
+
 // List rows glide to new places on a spring.
 const GLIDE = springEasing(1000, 63)
 
@@ -265,6 +321,47 @@ export function TeamSidebar(props) {
     ]
     return entries.sort((a, b) => Number(Boolean(b.item.pinned)) - Number(Boolean(a.item.pinned)) || b.at - a.at)
   }, [roster, updated])
+  // Evaluated now, not lazily: the tests render the sidebar outside React.
+  const [folds, setFolds] = useState(readFolds())
+  const toggleFold = (id) => setFolds((current) => {
+    const next = new Set(current)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    writeFolds(next)
+    return next
+  })
+  const [unlocked, setUnlocked] = useState(readUnlocks())
+  const [asking, setAsking] = useState(null)
+  const unlock = async (id, pin) => {
+    if (await actions.checkSpacePin(id, pin) !== true) return false
+    setUnlocked((current) => {
+      const next = new Set(current)
+      next.add(id)
+      writeUnlocks(next)
+      return next
+    })
+    setAsking(null)
+    return true
+  }
+  // With spaces the list splits: Ungrouped first, then each non-empty space in
+  // creation order. The rail shows no headers, so it keeps the flat list.
+  const sections = useMemo(() => {
+    const spaces = roster.spaces ?? []
+    if (!wide || spaces.length === 0) return [{ id: '', entries: order }]
+    const bySpace = new Map(spaces.map(space => [space.id, []]))
+    const rest = []
+    for (const entry of order) {
+      const bucket = bySpace.get(entry.item.space)
+      if (bucket === undefined) rest.push(entry)
+      else bucket.push(entry)
+    }
+    const sections = [{ id: '', entries: rest }]
+    for (const space of spaces) {
+      const entries = bySpace.get(space.id)
+      if (entries.length > 0) sections.push({ id: space.id, space, entries })
+    }
+    return sections
+  }, [order, roster.spaces, wide])
   const main = roster.byId[roster.mainBotId]
   useListGlide(listRef, wide, order.map(entry => entry.item.id).join(','))
   useLandOnMainBot(roster, useSessions, actions)
@@ -289,11 +386,19 @@ export function TeamSidebar(props) {
     wide && roster.readOnly ? h('div', { className: 'bt-hint bt-read-only', role: 'status' }, hostText(roster.readOnly)) : null,
     h('div', { ref: listRef, className: 'bt-list', role: 'region', 'aria-label': t('Bot list') },
       main ? h(BotRow, { ...rowProps, bot: main, marked: markedUnread[main.id] === true }) : roster.ready ? null : h('div', { className: 'bt-hint' }, t('Setting up your Main Bot…')),
-      order.map(entry => (entry.kind === 'bot'
-        ? h(BotRow, { key: entry.item.id, ...rowProps, bot: entry.item, marked: markedUnread[entry.item.id] === true })
-        : entry.kind === 'room'
-          ? h(RoomRow, { key: entry.item.id, ...rowProps, room: entry.item, marked: markedUnread[entry.item.id] === true })
-          : h(AgentRow, { key: entry.item.id, ...rowProps, agent: entry.item, marked: markedUnread[entry.item.id] === true })))))
+      sections.map(section => {
+        const locked = section.space?.locked === true && !unlocked.has(section.id)
+        return h(Fragment, { key: section.id || 'ungrouped' },
+          sections.length > 1 ? h(SpaceHead, { space: section.space, count: section.entries.length, folded: folds.has(section.id), locked, onToggle: () => locked ? setAsking(asking === section.id ? null : section.id) : toggleFold(section.id) }) : null,
+          locked ? (asking === section.id ? h(SpacePinForm, { onUnlock: pin => unlock(section.id, pin) }) : null)
+            : folds.has(section.id) ? null
+              : section.entries.map(entry => (entry.kind === 'bot'
+            ? h(BotRow, { key: entry.item.id, ...rowProps, bot: entry.item, marked: markedUnread[entry.item.id] === true })
+            : entry.kind === 'room'
+              ? h(RoomRow, { key: entry.item.id, ...rowProps, room: entry.item, marked: markedUnread[entry.item.id] === true })
+              : h(AgentRow, { key: entry.item.id, ...rowProps, agent: entry.item, marked: markedUnread[entry.item.id] === true }))))
+        })
+    ))
 }
 
 // The update button at the sidebar's top right: a cloud while a newer DS Bot —
@@ -669,4 +774,16 @@ export const SIDEBAR_CSS = `
 .bt-agent-sub[data-open] .bt-agent-sub-row{animation:bt-agent-row-in .24s ease both;animation-delay:calc(var(--i, 0)*30ms)}
 @keyframes bt-agent-row-in{from{opacity:0;filter:blur(4px)}to{opacity:1;filter:blur(0)}}
 @media (prefers-reduced-motion:reduce){.bt-agent-sub{transition:none}.bt-agent-sub .bt-agent-sub-row{animation:none}}
+
+/* Space section headers divide the list. */
+.bt-space-head{display:flex;align-items:center;gap:5px;width:100%;margin:10px 4px 2px;padding:4px 8px 4px 4px;border:0;border-radius:8px;background:none;color:var(--bt-ink-3);font:inherit;font-size:11.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;text-align:left;cursor:pointer}
+.bt-space-head:hover{color:var(--bt-ink)}
+.bt-space-chev{display:inline-flex;color:var(--bt-ink-3);transform:rotate(90deg);transition:transform .15s ease}
+.bt-space-chev.is-fold{transform:rotate(0)}
+.bt-space-dot{flex:none;width:8px;height:8px;border-radius:50%}
+.bt-space-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bt-space-count{flex:none;font-weight:500;opacity:.75}
+.bt-space-pin{display:flex;align-items:center;gap:6px;margin:2px 4px 4px;padding:0 8px 0 18px}
+.bt-space-pin .bt-bs-input{flex:1;width:auto;text-align:left}
+.bt-space-pin-err{font-size:11.5px;color:var(--bt-danger)}
 `

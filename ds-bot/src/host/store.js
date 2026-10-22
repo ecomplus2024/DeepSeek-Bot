@@ -12,7 +12,7 @@ export function install(rt) {
   const { ctx, home, statePath } = rt
 
   /** @type {{version:1, workspaceId?:string, mainBotIds:string[], bots:Record<string,any>, rooms:Record<string,any>, agents:Record<string,any>, capabilities:{items:Record<string,any>}, exchanges:any[], exchangeTurns:Record<string,number[]>, revision:number}} */
-  const state = { version: 1, mainBotIds: [], bots: {}, rooms: {}, agents: {}, capabilities: { items: {} }, exchanges: [], exchangeTurns: {}, works: {}, questions: {}, prefs: {}, zalo: {}, revision: 0 }
+  const state = { version: 1, mainBotIds: [], bots: {}, rooms: {}, spaces: {}, agents: {}, capabilities: { items: {} }, exchanges: [], exchangeTurns: {}, works: {}, questions: {}, prefs: {}, zalo: {}, revision: 0 }
   let loaded = null
   let writing = Promise.resolve()
   const { warn } = rt
@@ -111,6 +111,17 @@ export function install(rt) {
     } else if (state.capabilities.items === null || typeof state.capabilities.items !== 'object' || Array.isArray(state.capabilities.items)) {
       state.capabilities.items = {}
       migrated = true
+    }
+    if (state.spaces === null || typeof state.spaces !== 'object' || Array.isArray(state.spaces)) {
+      state.spaces = {}
+      migrated = true
+    }
+    // A space that no longer exists releases its members back to the ungrouped section.
+    for (const entry of [...Object.values(state.bots), ...Object.values(state.rooms)]) {
+      if (entry.space !== undefined && state.spaces[entry.space] === undefined) {
+        delete entry.space
+        migrated = true
+      }
     }
     for (const bot of Object.values(state.bots)) {
       if (!Array.isArray(bot.capabilities)) {

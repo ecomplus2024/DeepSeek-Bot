@@ -45,6 +45,9 @@ export function install(rt) {
       const last = (log ?? []).filter(line => line.kind === undefined).at(-1)
       return { ...room, parts, ...(last ? { preview: last.who === 'User' ? last.text : `${last.who}：${last.text}` } : {}) }
     }),
+    // Sidebar labels that group Bots and group chats; an ordering aid, not a boundary.
+    // The PIN hash stays on the host; the client only learns whether a space locks.
+    spaces: Object.values(state.spaces).map(({ pin, ...space }) => ({ ...space, locked: pin !== undefined })),
     exchangeTurns: state.exchangeTurns,
     questions: state.questions,
     // The team's DSH Agent (at most one): plain dsh Sessions, not Bots.
@@ -157,7 +160,7 @@ export function install(rt) {
           return ok([...rt.roomProgress.entries()].filter(([, entry]) => entry.roomId === body.roomId).map(([callId, entry]) => ({ callId, replies: entry.replies, speaking: entry.speaking ?? null })))
         case 'create-bot': {
           await rt.bootstrap()
-          const bot = await rt.createBot({ name: body.name, role: body.role, color: body.color, instructions: body.instructions, brief: body.brief, avatar: body.avatar, model: body.model, effort: body.effort, workDir: body.workDir })
+          const bot = await rt.createBot({ name: body.name, role: body.role, color: body.color, instructions: body.instructions, brief: body.brief, avatar: body.avatar, model: body.model, effort: body.effort, workDir: body.workDir, space: body.space })
           return ok(bot)
         }
         case 'update-bot':
@@ -176,7 +179,7 @@ export function install(rt) {
           return ok(view())
         case 'create-room': {
           await rt.load()
-          const room = await rt.createRoom({ members: Array.isArray(body.members) ? body.members : [], name: body.name, ...(typeof body.admin === 'string' ? { admin: body.admin } : {}) })
+          const room = await rt.createRoom({ members: Array.isArray(body.members) ? body.members : [], name: body.name, space: body.space, ...(typeof body.admin === 'string' ? { admin: body.admin } : {}) })
           if (body.greet === true) await rt.greetRoom(room.id).catch(error => rt.warn('ds-bot: greeting in %s failed: %s', room.name, error))
           return ok(room)
         }
@@ -192,6 +195,7 @@ export function install(rt) {
             remove: Array.isArray(body.remove) ? body.remove : undefined,
             workDir: body.workDir,
             permission: body.permission,
+            space: body.space,
           })
           return ok({ room: view().rooms.find(entry => entry.id === room.id), changes })
         }
@@ -227,6 +231,20 @@ export function install(rt) {
         case 'delete-room':
           await rt.load()
           await rt.deleteRoom(body.id)
+          return ok(view())
+        case 'create-space':
+          await rt.load()
+          return ok(await rt.createSpace(body))
+        case 'update-space':
+          await rt.load()
+          await rt.updateSpace(String(body.id ?? ''), body)
+          return ok(view())
+        case 'check-space-pin':
+          await rt.load()
+          return ok(rt.checkSpacePin(String(body.id ?? ''), String(body.pin ?? '')))
+        case 'delete-space':
+          await rt.load()
+          await rt.deleteSpace(String(body.id ?? ''))
           return ok(view())
         case 'approval-answer':
           rt.answerApproval(body.id, body.choice)

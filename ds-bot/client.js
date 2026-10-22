@@ -186,6 +186,26 @@ var ZH = {
   "Enter a DeepSeek API key": "填入 DeepSeek API key",
   "Open settings to set up a custom model": "打开设置配置自定义模型",
   "DS Bot": "DS Bot",
+  // Spaces
+  Space: "空间",
+  "Spaces · {count}": "空间 · {count}",
+  Ungrouped: "未分组",
+  "New space": "新建空间",
+  "Space name": "空间名",
+  "No color": "无颜色",
+  "{count} listed": "{count} 项",
+  "Groups Bots and group chats in the sidebar.": "在侧边栏里给 Bot 和群聊分组。",
+  "Files this Bot under a sidebar section.": "把这个 Bot 放进侧边栏的一个分区。",
+  "Files this group under a sidebar section.": "把这个群聊放进侧边栏的一个分区。",
+  "Click again to delete. Its members go back to Ungrouped.": "再点一次删除，里面的条目回到「未分组」。",
+  PIN: "PIN",
+  "Space PIN": "空间 PIN",
+  "The sidebar asks for it before opening the section.": "打开这个分区前侧边栏会先问 PIN。",
+  "Not set": "未设置",
+  "4–64 characters": "4–64 个字符",
+  Set: "设置",
+  Locked: "已锁定",
+  "Wrong PIN": "PIN 不对",
   // Header
   "Message {name}": "给 {name} 发消息",
   Message: "发消息",
@@ -968,6 +988,11 @@ var HOST_ERRORS = [
   [/^A group chat holds at most (\d+) Bots$/, "一个群聊最多 $1 个 Bot"],
   [/^Reply mode must be one of (.+)$/, "回复模式只能是 $1"],
   [/^Only the user, a Main Bot, or the admin of "(.+)" can change it$/, "只有你、主 Bot 或「$1」的管理员可以修改"],
+  [/^A space named "(.+)" already exists$/, "已经有叫「$1」的空间了"],
+  [/^No space named (.+)$/, "没有叫 $1 的空间"],
+  [/^A team holds at most (\d+) spaces$/, "一个团队最多 $1 个空间"],
+  [/^Only the user or a Main Bot can set the space of "(.+)"$/, "只有你或主 Bot 可以设置「$1」的空间"],
+  [/^A space PIN needs (\d+)–(\d+) characters$/, "空间 PIN 需要 $1–$2 个字符"],
   [/^A key must have at least (\d+) characters$/, "密钥至少 $1 个字符"],
   [/^A key can have at most (\d+) characters$/, "密钥最多 $1 个字符"],
   [/^(.+) is not saved yet$/, "$1 还没有保存"],
@@ -1021,7 +1046,9 @@ var HOST_ZH = {
   "The model wrote nothing": "模型没有输出内容",
   "Write the entry to save.": "请写下要保存的内容。",
   "This DeepSeek Harness has no folder chooser": "这个 DeepSeek Harness 没有文件夹选择窗口",
-  "This DeepSeek Harness cannot list folders": "这个 DeepSeek Harness 不能列出文件夹"
+  "This DeepSeek Harness cannot list folders": "这个 DeepSeek Harness 不能列出文件夹",
+  "A space needs a name": "空间需要一个名字",
+  "Unknown space": "找不到这个空间"
 };
 Object.assign(ZH, HOST_ZH);
 var VI = {
@@ -1169,6 +1196,26 @@ var VI = {
   "Enter a DeepSeek API key": "Nhập API key DeepSeek",
   "Open settings to set up a custom model": "Mở cài đặt để thiết lập model tùy chỉnh",
   "DS Bot": "DS Bot",
+  // Spaces
+  Space: "Khu vực",
+  "Spaces · {count}": "Khu vực · {count}",
+  Ungrouped: "Chưa nhóm",
+  "New space": "Khu vực mới",
+  "Space name": "Tên khu vực",
+  "No color": "Không màu",
+  "{count} listed": "{count} mục",
+  "Groups Bots and group chats in the sidebar.": "Nhóm Bot và nhóm chat trong thanh bên.",
+  "Files this Bot under a sidebar section.": "Xếp Bot này vào một mục trong thanh bên.",
+  "Files this group under a sidebar section.": "Xếp nhóm chat này vào một mục trong thanh bên.",
+  "Click again to delete. Its members go back to Ungrouped.": "Nhấn lần nữa để xóa. Các mục bên trong quay về Chưa nhóm.",
+  PIN: "PIN",
+  "Space PIN": "PIN khu vực",
+  "The sidebar asks for it before opening the section.": "Thanh bên sẽ hỏi PIN trước khi mở mục này.",
+  "Not set": "Chưa đặt",
+  "4–64 characters": "4–64 ký tự",
+  Set: "Đặt",
+  Locked: "Đã khoá",
+  "Wrong PIN": "Sai PIN",
   // Header
   "Message {name}": "Nhắn tin cho {name}",
   Message: "Nhắn tin",
@@ -1951,6 +1998,11 @@ var HOST_ERRORS_VI = [
   [/^A group chat holds at most (\d+) Bots$/, "Một nhóm chat chứa tối đa $1 Bot"],
   [/^Reply mode must be one of (.+)$/, "Chế độ trả lời chỉ được là $1"],
   [/^Only the user, a Main Bot, or the admin of "(.+)" can change it$/, "Chỉ bạn, Bot chính hoặc quản trị viên của “$1” mới có thể sửa"],
+  [/^A space named "(.+)" already exists$/, "Đã có khu vực tên “$1”"],
+  [/^No space named (.+)$/, "Không có khu vực tên $1"],
+  [/^A team holds at most (\d+) spaces$/, "Một đội chứa tối đa $1 khu vực"],
+  [/^Only the user or a Main Bot can set the space of "(.+)"$/, "Chỉ bạn hoặc Bot chính mới đặt được khu vực của “$1”"],
+  [/^A space PIN needs (\d+)–(\d+) characters$/, "PIN khu vực cần $1–$2 ký tự"],
   [/^A key must have at least (\d+) characters$/, "Khóa phải có ít nhất $1 ký tự"],
   [/^A key can have at most (\d+) characters$/, "Khóa chỉ được tối đa $1 ký tự"],
   [/^(.+) is not saved yet$/, "$1 chưa được lưu"],
@@ -2003,7 +2055,9 @@ var HOST_VI = {
   "The model wrote nothing": "Model không xuất nội dung nào",
   "Write the entry to save.": "Hãy viết nội dung cần lưu.",
   "This DeepSeek Harness has no folder chooser": "DeepSeek Harness này không có hộp chọn thư mục",
-  "This DeepSeek Harness cannot list folders": "DeepSeek Harness này không liệt kê được thư mục"
+  "This DeepSeek Harness cannot list folders": "DeepSeek Harness này không liệt kê được thư mục",
+  "A space needs a name": "Khu vực cần có tên",
+  "Unknown space": "Không tìm thấy khu vực này"
 };
 Object.assign(VI, HOST_VI);
 var fill = (text, params) => params ? text.replace(/\{(\w+)\}/g, (match, name) => name in params ? String(params[name]) : match) : text;
@@ -2325,7 +2379,7 @@ function createSource(initial) {
     }
   };
 }
-var EMPTY_ROSTER = { revision: -1, mainBotId: null, mainBotIds: [], bots: [], rooms: [], agents: [], exchangeTurns: {}, questions: {}, secrets: [], capabilities: [], capabilityStatuses: {}, secretRequests: {}, models: [], defaultModel: null, modelsKey: null, prefs: {}, zalo: { bots: {}, accounts: [], login: null }, pair: { enabled: false }, byId: {}, roomsById: {}, agentsById: {}, agentOf: {}, ready: false };
+var EMPTY_ROSTER = { revision: -1, mainBotId: null, mainBotIds: [], bots: [], rooms: [], spaces: [], agents: [], exchangeTurns: {}, questions: {}, secrets: [], capabilities: [], capabilityStatuses: {}, secretRequests: {}, models: [], defaultModel: null, modelsKey: null, prefs: {}, zalo: { bots: {}, accounts: [], login: null }, pair: { enabled: false }, byId: {}, roomsById: {}, agentsById: {}, spacesById: {}, agentOf: {}, ready: false };
 var isMainOf = (roster, id) => id !== void 0 && (roster.mainBotIds ?? []).includes(id);
 function indexRoster(value) {
   const byId = {};
@@ -2334,13 +2388,15 @@ function indexRoster(value) {
   }
   const roomsById = {};
   for (const room2 of value.rooms) roomsById[room2.id] = room2;
+  const spacesById = {};
+  for (const space of value.spaces ?? []) spacesById[space.id] = space;
   const agentsById = {};
   const agentOf = {};
   for (const agent of value.agents ?? []) {
     agentsById[agent.id] = agent;
     for (const sessionId of agent.sessions ?? []) agentOf[sessionId] = agent.id;
   }
-  return { ...value, agents: value.agents ?? [], byId, roomsById, agentsById, agentOf, ready: true };
+  return { ...value, agents: value.agents ?? [], spaces: value.spaces ?? [], byId, roomsById, agentsById, spacesById, agentOf, ready: true };
 }
 function isAgentSession(roster, cache, sessionId) {
   if (sessionId === void 0 || sessionId === null || sessionId === "") return false;
@@ -4283,6 +4339,7 @@ var SwitchIcon = lineIcon(["M4 7h9.5M10.5 3.5L14 7l-3.5 3.5", "M16 13H6.5M9.5 9.
 var PaperclipIcon = lineIcon(["M15.5 9.5l-5.6 5.6a3.4 3.4 0 0 1-4.8-4.8l6.1-6.1a2.25 2.25 0 0 1 3.2 3.2l-6 6a1.1 1.1 0 0 1-1.6-1.6l5.5-5.5"]);
 var ClockIcon = lineIcon(["M10 3.5a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13z", "M10 6.5V10l2.5 1.5"]);
 var GearIcon = lineIcon(["M10 7.4a2.6 2.6 0 1 1 0 5.2 2.6 2.6 0 0 1 0-5.2z", "M7.85 4.4l.29-1.87a7.7 7.7 0 0 1 3.72 0l.29 1.87a6 6 0 0 1 1.63.94l1.76-.69a7.7 7.7 0 0 1 1.86 3.23l-1.47 1.18a6 6 0 0 1 0 1.88l1.47 1.18a7.7 7.7 0 0 1-1.86 3.23l-1.76-.69a6 6 0 0 1-1.63.94l-.29 1.87a7.7 7.7 0 0 1-3.72 0l-.29-1.87a6 6 0 0 1-1.63-.94l-1.76.69a7.7 7.7 0 0 1-1.86-3.23l1.47-1.18a6 6 0 0 1 0-1.88L2.6 7.88a7.7 7.7 0 0 1 1.86-3.23l1.76.69a6 6 0 0 1 1.63-.94z"]);
+var LockIcon = lineIcon(["M6.5 9.5V7a3.5 3.5 0 0 1 7 0v2.5", "M5.25 9.5h9.5v7h-9.5z", "M10 12v1.5"]);
 var PinIcon = lineIcon(["M12.5 3l4.5 4.5-3 1.5-2.5 2.5.5 3.5-1.5 1.5L7 13 3.5 16.5", "M7 13l-3.5-3.5L5 8l3.5.5L11 6l1.5-3"]);
 function PinMarkIcon() {
   return (0, import_react3.createElement)(
@@ -4310,6 +4367,73 @@ var SidePanelIcon = lineIcon(["M4.5 4h11A1.5 1.5 0 0 1 17 5.5v9a1.5 1.5 0 0 1-1.
 var FolderIcon = lineIcon(["M3 6A1.5 1.5 0 0 1 4.5 4.5h3.2l1.8 2h6A1.5 1.5 0 0 1 17 8v6.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 14.5z"]);
 var ChatsIcon = lineIcon(["M3.5 5.5A1.5 1.5 0 0 1 5 4h7a1.5 1.5 0 0 1 1.5 1.5V10A1.5 1.5 0 0 1 12 11.5H8L5 14v-2.5A1.5 1.5 0 0 1 3.5 10z", "M13.5 7.5H15A1.5 1.5 0 0 1 16.5 9v4.5A1.5 1.5 0 0 1 15 15v2l-2.5-2h-3A1.5 1.5 0 0 1 8 13.5V13"]);
 var SETTINGS_ICONS = { general: GearIcon, bots: PeopleIcon, groups: ChatsIcon, usage: GaugeIcon };
+
+// src/client/storage.js
+var STORAGE = {
+  unread: "ds-bot:unread",
+  reactions: "ds-bot:reactions",
+  seen: "ds-bot:seen",
+  prefs: "ds-bot:prefs",
+  surface: "ds-bot:surface",
+  agentSessions: "ds-bot:agent-sessions",
+  browserWidth: "ds-bot:browser-width",
+  browsers: "ds-bot.browser.v2",
+  spaces: "ds-bot:spaces",
+  spaceUnlocks: "ds-bot:space-unlocks"
+};
+var LEGACY_PREFIXES = ["dsh-bot:", "dsh-bot-team:"];
+var LEGACY_BROWSER_KEYS = ["ds-bot.browser.v1", "dsh-bot.browser.v1"];
+var LEGACY_THEMES = { grok: "mono" };
+function legacyKeys(key) {
+  if (key === STORAGE.browsers) return LEGACY_BROWSER_KEYS;
+  const name = key.slice(key.indexOf(":") + 1);
+  return LEGACY_PREFIXES.map((prefix) => `${prefix}${name}`);
+}
+var migrateBrowsers = (storage) => {
+  if (storage.getItem(STORAGE.browsers) !== null) {
+    for (const key of LEGACY_BROWSER_KEYS) storage.removeItem(key);
+    return;
+  }
+  for (const key of LEGACY_BROWSER_KEYS) {
+    try {
+      const value = storage.getItem(key);
+      if (value === null) continue;
+      const previous = JSON.parse(value) ?? {};
+      const tabs = Object.fromEntries(Object.entries(previous).filter(([, page]) => page && typeof page === "object").map(([botId, page]) => {
+        const tab = { id: `v1-${botId}`, url: page.url ?? "", title: page.title ?? "" };
+        return [botId, { tabs: [tab], active: tab.id }];
+      }));
+      storage.setItem(STORAGE.browsers, JSON.stringify(tabs));
+      for (const earlier of LEGACY_BROWSER_KEYS) storage.removeItem(earlier);
+      return;
+    } catch {
+    }
+  }
+};
+function migrateStorage(storage = globalThis.localStorage) {
+  for (const key of Object.values(STORAGE)) {
+    if (key === STORAGE.browsers) continue;
+    for (const legacy of legacyKeys(key)) {
+      try {
+        const value = storage.getItem(legacy);
+        if (value !== null && storage.getItem(key) === null) storage.setItem(key, value);
+        storage.removeItem(legacy);
+      } catch {
+      }
+    }
+  }
+  try {
+    migrateBrowsers(storage);
+  } catch {
+  }
+  try {
+    const prefs = JSON.parse(storage.getItem(STORAGE.prefs) ?? "null");
+    if (prefs && Object.hasOwn(LEGACY_THEMES, prefs.theme ?? "")) {
+      storage.setItem(STORAGE.prefs, JSON.stringify({ ...prefs, theme: LEGACY_THEMES[prefs.theme] }));
+    }
+  } catch {
+  }
+}
 
 // src/client/questions.js
 var import_react4 = require("react");
@@ -4548,7 +4672,7 @@ var KeyIcon = () => (0, import_react5.createElement)(
   (0, import_react5.createElement)("path", { d: "M7 9.5a3.5 3.5 0 1 1 0 .01z" }),
   (0, import_react5.createElement)("path", { d: "M10.4 10.6L17 10.6M14.5 10.6v2.4M16.6 10.6v1.8" })
 );
-var LockIcon = () => (0, import_react5.createElement)(
+var LockIcon2 = () => (0, import_react5.createElement)(
   "svg",
   { width: 14, height: 14, viewBox: "0 0 20 20", fill: "none", stroke: "currentColor", strokeWidth: 1.5, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true },
   (0, import_react5.createElement)("path", { d: "M6.5 9V7a3.5 3.5 0 0 1 7 0v2" }),
@@ -4613,7 +4737,7 @@ function SecretHead({ bot, title, detail, name, onClose }) {
   return (0, import_react5.createElement)(
     "div",
     { className: "bt-q-head bt-secret-head" },
-    (0, import_react5.createElement)("span", { className: "bt-secret-who" }, (0, import_react5.createElement)(BotMark, { bot, size: 28 }), (0, import_react5.createElement)("span", { className: "bt-secret-lock" }, (0, import_react5.createElement)(LockIcon))),
+    (0, import_react5.createElement)("span", { className: "bt-secret-who" }, (0, import_react5.createElement)(BotMark, { bot, size: 28 }), (0, import_react5.createElement)("span", { className: "bt-secret-lock" }, (0, import_react5.createElement)(LockIcon2))),
     (0, import_react5.createElement)(
       "div",
       { className: "bt-q-text" },
@@ -6350,6 +6474,84 @@ function AgentRow({ agent, actions, useSessions, useSessionStatus, useUi, wide, 
     )
   );
 }
+function SpaceHead({ space, count, folded, locked, onToggle }) {
+  return (0, import_react10.createElement)(
+    "button",
+    { type: "button", className: "bt-space-head", "aria-expanded": String(!folded && !locked), onClick: onToggle },
+    (0, import_react10.createElement)("span", { className: `bt-space-chev${folded || locked ? " is-fold" : ""}`, "aria-hidden": true }, locked ? (0, import_react10.createElement)(LockIcon) : (0, import_react10.createElement)(ChevronRightIcon)),
+    space?.color ? (0, import_react10.createElement)("span", { className: "bt-space-dot", style: { background: paintCss(space.color) }, "aria-hidden": true }) : null,
+    (0, import_react10.createElement)("span", { className: "bt-space-name" }, space?.name ?? t("Ungrouped")),
+    (0, import_react10.createElement)("span", { className: "bt-space-count", "aria-hidden": true }, locked ? t("Locked") : String(count))
+  );
+}
+function SpacePinForm({ onUnlock }) {
+  const [pin, setPin] = (0, import_react10.useState)("");
+  const [wrong, setWrong] = (0, import_react10.useState)(false);
+  const [busy, setBusy] = (0, import_react10.useState)(false);
+  const submit = async () => {
+    if (busy || pin === "") return;
+    setBusy(true);
+    try {
+      if (await onUnlock(pin)) return;
+      setWrong(true);
+      setPin("");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (0, import_react10.createElement)(
+    "form",
+    { className: "bt-space-pin", onSubmit: (event) => {
+      event.preventDefault();
+      void submit();
+    } },
+    (0, import_react10.createElement)("input", {
+      type: "password",
+      className: "bt-bs-input",
+      autoComplete: "off",
+      autoFocus: true,
+      value: pin,
+      maxLength: 64,
+      placeholder: t("Space PIN"),
+      "aria-label": t("Space PIN"),
+      onChange: (event) => {
+        setPin(event.target.value);
+        setWrong(false);
+      }
+    }),
+    wrong ? (0, import_react10.createElement)("span", { className: "bt-space-pin-err", role: "alert" }, t("Wrong PIN")) : null
+  );
+}
+var readFolds = () => {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(STORAGE.spaces) ?? "[]"));
+  } catch {
+    return /* @__PURE__ */ new Set();
+  }
+};
+var writeFolds = (set) => {
+  try {
+    localStorage.setItem(STORAGE.spaces, JSON.stringify([...set]));
+  } catch {
+  }
+};
+var readUnlocks = () => {
+  let list = [];
+  try {
+    list = JSON.parse(localStorage.getItem(STORAGE.spaceUnlocks) ?? "[]");
+  } catch {
+  }
+  const set = new Set(list);
+  const gate = /(?:^|;\s*)ds-bot-unlocked=([^;]+)/.exec(document.cookie ?? "")?.[1];
+  if (gate) set.add(decodeURIComponent(gate));
+  return set;
+};
+var writeUnlocks = (set) => {
+  try {
+    localStorage.setItem(STORAGE.spaceUnlocks, JSON.stringify([...set]));
+  } catch {
+  }
+};
 var GLIDE = springEasing(1e3, 63);
 function useListGlide(listRef, layout, key) {
   const tops = (0, import_react10.useRef)({ layout, map: /* @__PURE__ */ new Map() });
@@ -6391,6 +6593,44 @@ function TeamSidebar(props) {
     ];
     return entries2.sort((a, b) => Number(Boolean(b.item.pinned)) - Number(Boolean(a.item.pinned)) || b.at - a.at);
   }, [roster, updated]);
+  const [folds, setFolds] = (0, import_react10.useState)(readFolds());
+  const toggleFold = (id) => setFolds((current) => {
+    const next = new Set(current);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    writeFolds(next);
+    return next;
+  });
+  const [unlocked, setUnlocked] = (0, import_react10.useState)(readUnlocks());
+  const [asking, setAsking] = (0, import_react10.useState)(null);
+  const unlock = async (id, pin) => {
+    if (await actions.checkSpacePin(id, pin) !== true) return false;
+    setUnlocked((current) => {
+      const next = new Set(current);
+      next.add(id);
+      writeUnlocks(next);
+      return next;
+    });
+    setAsking(null);
+    return true;
+  };
+  const sections = (0, import_react10.useMemo)(() => {
+    const spaces = roster.spaces ?? [];
+    if (!wide || spaces.length === 0) return [{ id: "", entries: order }];
+    const bySpace = new Map(spaces.map((space) => [space.id, []]));
+    const rest = [];
+    for (const entry of order) {
+      const bucket = bySpace.get(entry.item.space);
+      if (bucket === void 0) rest.push(entry);
+      else bucket.push(entry);
+    }
+    const sections2 = [{ id: "", entries: rest }];
+    for (const space of spaces) {
+      const entries2 = bySpace.get(space.id);
+      if (entries2.length > 0) sections2.push({ id: space.id, space, entries: entries2 });
+    }
+    return sections2;
+  }, [order, roster.spaces, wide]);
   const main = roster.byId[roster.mainBotId];
   useListGlide(listRef, wide, order.map((entry) => entry.item.id).join(","));
   useLandOnMainBot(roster, useSessions, actions);
@@ -6423,7 +6663,15 @@ function TeamSidebar(props) {
       "div",
       { ref: listRef, className: "bt-list", role: "region", "aria-label": t("Bot list") },
       main ? (0, import_react10.createElement)(BotRow, { ...rowProps, bot: main, marked: markedUnread[main.id] === true }) : roster.ready ? null : (0, import_react10.createElement)("div", { className: "bt-hint" }, t("Setting up your Main Bot…")),
-      order.map((entry) => entry.kind === "bot" ? (0, import_react10.createElement)(BotRow, { key: entry.item.id, ...rowProps, bot: entry.item, marked: markedUnread[entry.item.id] === true }) : entry.kind === "room" ? (0, import_react10.createElement)(RoomRow, { key: entry.item.id, ...rowProps, room: entry.item, marked: markedUnread[entry.item.id] === true }) : (0, import_react10.createElement)(AgentRow, { key: entry.item.id, ...rowProps, agent: entry.item, marked: markedUnread[entry.item.id] === true }))
+      sections.map((section) => {
+        const locked = section.space?.locked === true && !unlocked.has(section.id);
+        return (0, import_react10.createElement)(
+          import_react10.Fragment,
+          { key: section.id || "ungrouped" },
+          sections.length > 1 ? (0, import_react10.createElement)(SpaceHead, { space: section.space, count: section.entries.length, folded: folds.has(section.id), locked, onToggle: () => locked ? setAsking(asking === section.id ? null : section.id) : toggleFold(section.id) }) : null,
+          locked ? asking === section.id ? (0, import_react10.createElement)(SpacePinForm, { onUnlock: (pin) => unlock(section.id, pin) }) : null : folds.has(section.id) ? null : section.entries.map((entry) => entry.kind === "bot" ? (0, import_react10.createElement)(BotRow, { key: entry.item.id, ...rowProps, bot: entry.item, marked: markedUnread[entry.item.id] === true }) : entry.kind === "room" ? (0, import_react10.createElement)(RoomRow, { key: entry.item.id, ...rowProps, room: entry.item, marked: markedUnread[entry.item.id] === true }) : (0, import_react10.createElement)(AgentRow, { key: entry.item.id, ...rowProps, agent: entry.item, marked: markedUnread[entry.item.id] === true }))
+        );
+      })
     )
   );
 }
@@ -6849,6 +7097,18 @@ var SIDEBAR_CSS = `
 .bt-agent-sub[data-open] .bt-agent-sub-row{animation:bt-agent-row-in .24s ease both;animation-delay:calc(var(--i, 0)*30ms)}
 @keyframes bt-agent-row-in{from{opacity:0;filter:blur(4px)}to{opacity:1;filter:blur(0)}}
 @media (prefers-reduced-motion:reduce){.bt-agent-sub{transition:none}.bt-agent-sub .bt-agent-sub-row{animation:none}}
+
+/* Space section headers divide the list. */
+.bt-space-head{display:flex;align-items:center;gap:5px;width:100%;margin:10px 4px 2px;padding:4px 8px 4px 4px;border:0;border-radius:8px;background:none;color:var(--bt-ink-3);font:inherit;font-size:11.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;text-align:left;cursor:pointer}
+.bt-space-head:hover{color:var(--bt-ink)}
+.bt-space-chev{display:inline-flex;color:var(--bt-ink-3);transform:rotate(90deg);transition:transform .15s ease}
+.bt-space-chev.is-fold{transform:rotate(0)}
+.bt-space-dot{flex:none;width:8px;height:8px;border-radius:50%}
+.bt-space-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bt-space-count{flex:none;font-weight:500;opacity:.75}
+.bt-space-pin{display:flex;align-items:center;gap:6px;margin:2px 4px 4px;padding:0 8px 0 18px}
+.bt-space-pin .bt-bs-input{flex:1;width:auto;text-align:left}
+.bt-space-pin-err{font-size:11.5px;color:var(--bt-danger)}
 `;
 
 // src/client/header.js
@@ -9541,6 +9801,17 @@ function BotSettingsForm({ bot, roster, actions, run }) {
     isTile ? null : (0, import_react20.createElement)(
       Card,
       { title: t("Sidebar") },
+      (roster.spaces ?? []).length === 0 ? null : (0, import_react20.createElement)(
+        "div",
+        { className: "bt-set-row bt-bs-row" },
+        (0, import_react20.createElement)("span", { className: "bt-set-copy" }, (0, import_react20.createElement)("span", { className: "bt-bs-label" }, t("Space")), (0, import_react20.createElement)("span", { className: "bt-set-hint" }, t("Files this Bot under a sidebar section."))),
+        (0, import_react20.createElement)(
+          "select",
+          { className: "bt-select", "aria-label": t("Space"), value: bot.space ?? "", onChange: (event) => save({ space: event.target.value === "" ? null : event.target.value }) },
+          (0, import_react20.createElement)("option", { value: "" }, t("Ungrouped")),
+          (roster.spaces ?? []).map((space) => (0, import_react20.createElement)("option", { key: space.id, value: space.id }, space.name))
+        )
+      ),
       (0, import_react20.createElement)(SwitchRow, { label: t("Pin"), hint: t("Kept above the other chats."), on: bot.pinned === true, onChange: (pinned) => run(actions.setFlags(bot.id, { pinned })) }),
       isMainBot ? null : (0, import_react20.createElement)(SwitchRow, { label: t("Hide from sidebar"), hint: t("Search still finds it."), on: bot.hidden === true, onChange: (hidden) => run(actions.setFlags(bot.id, { hidden })) })
     ),
@@ -9613,11 +9884,12 @@ function startModel(roster) {
   const models = roster.models ?? [];
   return (models.find((model) => model.ref === roster.defaultModel) ?? models[0])?.ref ?? "";
 }
-function createPayload({ name, look, image, model, effort, brief }) {
+function createPayload({ name, look, image, model, effort, brief, space }) {
   const payload = { name, color: look.color, avatar: image ? { shape: look.shape, image } : { shape: look.shape } };
   if (model) payload.model = model;
   if (effort) payload.effort = effort;
   if (brief) payload.brief = brief;
+  if (space) payload.space = space;
   return payload;
 }
 
@@ -9635,6 +9907,7 @@ function CreateBot({ roster, actions, start, brief = "", onBack, canGoBack, onCr
   const [name, setName] = (0, import_react21.useState)(start?.name ?? "");
   const [model, setModel] = (0, import_react21.useState)(() => startModel(roster));
   const [effort, setEffort] = (0, import_react21.useState)(void 0);
+  const [space, setSpace] = (0, import_react21.useState)("");
   const [busy, setBusy] = (0, import_react21.useState)(false);
   const [error, setError] = (0, import_react21.useState)("");
   const fileRef = (0, import_react21.useRef)(null);
@@ -9652,7 +9925,7 @@ function CreateBot({ roster, actions, start, brief = "", onBack, canGoBack, onCr
     setError("");
     setBusy(true);
     try {
-      const bot = await actions.createBot(createPayload({ name: finalName, look, image, model, effort, brief }));
+      const bot = await actions.createBot(createPayload({ name: finalName, look, image, model, effort, brief, space: space || void 0 }));
       onCreated(bot);
     } catch (failure) {
       setError(failure?.message ?? String(failure));
@@ -9741,6 +10014,17 @@ function CreateBot({ roster, actions, start, brief = "", onBack, canGoBack, onCr
         setEffort(void 0);
       }, onPickEffort: setEffort }),
       (0, import_react21.createElement)("span", { className: "bt-note" }, (roster.models ?? []).length > 0 ? t("The Bot runs on this model. You can change it later in its details.") : t("Add a provider and a model in DeepSeek Harness first, or pick one in the Bot's chat later."))
+    ),
+    (roster.spaces ?? []).length === 0 ? null : (0, import_react21.createElement)(
+      "div",
+      { className: "bt-field" },
+      (0, import_react21.createElement)("span", { className: "bt-field-label" }, t("Space")),
+      (0, import_react21.createElement)(
+        "select",
+        { className: "bt-select", "aria-label": t("Space"), value: space, onChange: (event) => setSpace(event.target.value) },
+        (0, import_react21.createElement)("option", { value: "" }, t("Ungrouped")),
+        roster.spaces.map((item) => (0, import_react21.createElement)("option", { key: item.id, value: item.id }, item.name))
+      )
     ),
     error ? (0, import_react21.createElement)("div", { className: "bt-error", role: "alert", style: { padding: 0 } }, error) : null,
     (0, import_react21.createElement)(
@@ -10554,6 +10838,17 @@ function GroupSettingsForm({ room: room2, roster, actions, run, onDeleted }) {
     (0, import_react26.createElement)(
       Card,
       { title: t("Sidebar") },
+      (roster.spaces ?? []).length === 0 ? null : (0, import_react26.createElement)(
+        "div",
+        { className: "bt-set-row bt-bs-row" },
+        (0, import_react26.createElement)("span", { className: "bt-set-copy" }, (0, import_react26.createElement)("span", { className: "bt-bs-label" }, t("Space")), (0, import_react26.createElement)("span", { className: "bt-set-hint" }, t("Files this group under a sidebar section."))),
+        (0, import_react26.createElement)(
+          "select",
+          { className: "bt-select", "aria-label": t("Space"), value: room2.space ?? "", onChange: (event) => update({ space: event.target.value === "" ? null : event.target.value }) },
+          (0, import_react26.createElement)("option", { value: "" }, t("Ungrouped")),
+          (roster.spaces ?? []).map((space) => (0, import_react26.createElement)("option", { key: space.id, value: space.id }, space.name))
+        )
+      ),
       (0, import_react26.createElement)(SwitchRow, { label: t("Pin"), hint: t("Kept above the other chats."), on: room2.pinned === true, onChange: (pinned) => run(actions.setFlags(room2.id, { pinned })) }),
       (0, import_react26.createElement)(SwitchRow, { label: t("Hide from sidebar"), hint: t("Search still finds it."), on: room2.hidden === true, onChange: (hidden) => run(actions.setFlags(room2.id, { hidden })) })
     ),
@@ -10578,7 +10873,9 @@ function NewGroupForm({ roster, actions, run, onCreated, onCancel }) {
   const [admin, setAdmin] = (0, import_react26.useState)(null);
   const [members, setMembers] = (0, import_react26.useState)([]);
   const [name, setName] = (0, import_react26.useState)("");
+  const [space, setSpace] = (0, import_react26.useState)("");
   const [busy, setBusy] = (0, import_react26.useState)(false);
+  const spaces = roster.spaces ?? [];
   const toggle = (id) => setMembers((list) => list.includes(id) ? list.filter((item) => item !== id) : [...list, id]);
   const pickAdmin = (id) => {
     setAdmin(id);
@@ -10588,7 +10885,7 @@ function NewGroupForm({ roster, actions, run, onCreated, onCancel }) {
     if (busy || admin === null || members.length === 0) return;
     setBusy(true);
     let room2;
-    const done = await run(actions.createRoom([admin, ...members], { admin, greet: true, ...name.trim() ? { name: name.trim() } : {} }).then((value) => {
+    const done = await run(actions.createRoom([admin, ...members], { admin, greet: true, ...name.trim() ? { name: name.trim() } : {}, ...space ? { space } : {} }).then((value) => {
       room2 = value;
     }));
     if (done && room2) onCreated(room2);
@@ -10630,6 +10927,17 @@ function NewGroupForm({ roster, actions, run, onCreated, onCancel }) {
       { className: "bt-set-row bt-bs-row bt-ng-step" },
       (0, import_react26.createElement)("span", { className: "bt-set-copy" }, (0, import_react26.createElement)("span", { className: "bt-bs-label" }, t("Name"))),
       (0, import_react26.createElement)("input", { className: "bt-bs-input", value: name, maxLength: 60, placeholder: t("Name after members"), onChange: (event) => setName(event.target.value) })
+    ),
+    admin === null || members.length === 0 || spaces.length === 0 ? null : (0, import_react26.createElement)(
+      "div",
+      { className: "bt-set-row bt-bs-row bt-ng-step" },
+      (0, import_react26.createElement)("span", { className: "bt-set-copy" }, (0, import_react26.createElement)("span", { className: "bt-bs-label" }, t("Space"))),
+      (0, import_react26.createElement)(
+        "select",
+        { className: "bt-select", "aria-label": t("Space"), value: space, onChange: (event) => setSpace(event.target.value) },
+        (0, import_react26.createElement)("option", { value: "" }, t("Ungrouped")),
+        spaces.map((item) => (0, import_react26.createElement)("option", { key: item.id, value: item.id }, item.name))
+      )
     ),
     (0, import_react26.createElement)(
       "div",
@@ -12516,6 +12824,81 @@ function MainBotsSection({ roster, actions, run }) {
     ) : null
   );
 }
+function SpaceRow({ space, count, actions, run }) {
+  const [confirming, setConfirming] = (0, import_react31.useState)(false);
+  const [pin, setPin] = (0, import_react31.useState)("");
+  (0, import_react31.useEffect)(() => {
+    if (!confirming) return void 0;
+    const timer = setTimeout(() => setConfirming(false), 4e3);
+    return () => clearTimeout(timer);
+  }, [confirming]);
+  const savePin = async () => {
+    if (await run(actions.updateSpace(space.id, { pin }))) setPin("");
+  };
+  return (0, import_react31.createElement)(
+    import_react31.Fragment,
+    null,
+    (0, import_react31.createElement)(
+      SetRow,
+      {
+        label: (0, import_react31.createElement)(InlineText, { label: t("Space name"), value: space.name, required: true, maxLength: 40, onSave: (name) => run(actions.updateSpace(space.id, { name })) }),
+        hint: confirming ? t("Click again to delete. Its members go back to Ungrouped.") : t("{count} listed", { count })
+      },
+      (0, import_react31.createElement)(
+        "div",
+        { className: "bt-swatches" },
+        (0, import_react31.createElement)("button", { type: "button", className: "bt-swatch bt-swatch-default", title: t("No color"), "aria-label": t("No color"), "aria-pressed": space.color === void 0, onClick: () => run(actions.updateSpace(space.id, { color: null })) }),
+        ACCENT_INKS.map((ink) => (0, import_react31.createElement)("button", {
+          key: ink,
+          type: "button",
+          className: "bt-swatch",
+          title: t(capitalize2(ink)),
+          "aria-label": t(capitalize2(ink)),
+          "aria-pressed": space.color === ink,
+          style: { background: INKS[ink][0] },
+          onClick: () => run(actions.updateSpace(space.id, { color: ink }))
+        }))
+      ),
+      (0, import_react31.createElement)("button", { type: "button", className: confirming ? "bt-soft bt-soft-sm bt-danger" : "bt-soft bt-soft-sm", "data-confirm": confirming || void 0, onClick: () => {
+        if (confirming) void run(actions.deleteSpace(space.id));
+        else setConfirming(true);
+      } }, t("Delete"))
+    ),
+    // Soft lock: the PIN gates the sidebar section on each browser, nothing more.
+    (0, import_react31.createElement)(
+      SetRow,
+      { label: t("PIN"), hint: space.locked ? t("The sidebar asks for it before opening the section.") : t("Not set") },
+      (0, import_react31.createElement)("input", { type: "password", className: "bt-bs-input", autoComplete: "new-password", value: pin, maxLength: 64, placeholder: t("4–64 characters"), "aria-label": t("Space PIN"), onChange: (event) => setPin(event.target.value), onKeyDown: (event) => {
+        if (event.key === "Enter" && !event.nativeEvent.isComposing) void savePin();
+      } }),
+      (0, import_react31.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", disabled: pin.length < 4, onClick: () => void savePin() }, t("Set")),
+      space.locked ? (0, import_react31.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", onClick: () => run(actions.updateSpace(space.id, { pin: null })) }, t("Clear")) : null
+    )
+  );
+}
+function SpacesSection({ roster, actions, run }) {
+  const spaces = roster.spaces ?? [];
+  const [name, setName] = (0, import_react31.useState)("");
+  const members = (id) => roster.bots.filter((bot) => bot.space === id).length + roster.rooms.filter((room2) => room2.space === id).length;
+  const create = async () => {
+    const text = name.trim();
+    if (text === "" || await run(actions.createSpace({ name: text })) !== true) return;
+    setName("");
+  };
+  return (0, import_react31.createElement)(
+    SetSection,
+    { title: t("Spaces · {count}", { count: spaces.length }) },
+    spaces.map((space) => (0, import_react31.createElement)(SpaceRow, { key: space.id, space, count: members(space.id), actions, run })),
+    (0, import_react31.createElement)(
+      SetRow,
+      { label: t("New space"), hint: t("Groups Bots and group chats in the sidebar.") },
+      (0, import_react31.createElement)("input", { className: "bt-bs-input", value: name, maxLength: 40, placeholder: t("Space name"), "aria-label": t("Space name"), onChange: (event) => setName(event.target.value), onKeyDown: (event) => {
+        if (event.key === "Enter" && !event.nativeEvent.isComposing) void create();
+      } }),
+      (0, import_react31.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", disabled: name.trim() === "", onClick: () => void create() }, t("Create"))
+    )
+  );
+}
 var MOTIONS = [["quiet", "Quiet"], ["normal", "Normal"], ["lively", "Lively"]];
 function MotionSection({ roster, actions, run }) {
   const motion = roster.prefs?.motion === "quiet" || roster.prefs?.motion === "lively" ? roster.prefs.motion : "normal";
@@ -12540,6 +12923,7 @@ function BotsPage({ roster, actions, run }) {
   const [creating, setCreating] = (0, import_react31.useState)(false);
   return [
     (0, import_react31.createElement)(MainBotsSection, { key: "main", roster, actions, run }),
+    (0, import_react31.createElement)(SpacesSection, { key: "spaces", roster, actions, run }),
     (0, import_react31.createElement)(MotionSection, { key: "motion", roster, actions, run }),
     creating ? (0, import_react31.createElement)(CreateBot, { key: "create", roster, actions, inline: true, onBack: () => setCreating(false), onCreated: (bot) => actions.openSettings("bots", bot.id) }) : (0, import_react31.createElement)(
       "div",
@@ -12804,71 +13188,6 @@ function AgentMenu({ menu, roster, actions, leaving }) {
       }, (0, import_react32.createElement)(Icon), label))
     ))
   );
-}
-
-// src/client/storage.js
-var STORAGE = {
-  unread: "ds-bot:unread",
-  reactions: "ds-bot:reactions",
-  seen: "ds-bot:seen",
-  prefs: "ds-bot:prefs",
-  surface: "ds-bot:surface",
-  agentSessions: "ds-bot:agent-sessions",
-  browserWidth: "ds-bot:browser-width",
-  browsers: "ds-bot.browser.v2"
-};
-var LEGACY_PREFIXES = ["dsh-bot:", "dsh-bot-team:"];
-var LEGACY_BROWSER_KEYS = ["ds-bot.browser.v1", "dsh-bot.browser.v1"];
-var LEGACY_THEMES = { grok: "mono" };
-function legacyKeys(key) {
-  if (key === STORAGE.browsers) return LEGACY_BROWSER_KEYS;
-  const name = key.slice(key.indexOf(":") + 1);
-  return LEGACY_PREFIXES.map((prefix) => `${prefix}${name}`);
-}
-var migrateBrowsers = (storage) => {
-  if (storage.getItem(STORAGE.browsers) !== null) {
-    for (const key of LEGACY_BROWSER_KEYS) storage.removeItem(key);
-    return;
-  }
-  for (const key of LEGACY_BROWSER_KEYS) {
-    try {
-      const value = storage.getItem(key);
-      if (value === null) continue;
-      const previous = JSON.parse(value) ?? {};
-      const tabs = Object.fromEntries(Object.entries(previous).filter(([, page]) => page && typeof page === "object").map(([botId, page]) => {
-        const tab = { id: `v1-${botId}`, url: page.url ?? "", title: page.title ?? "" };
-        return [botId, { tabs: [tab], active: tab.id }];
-      }));
-      storage.setItem(STORAGE.browsers, JSON.stringify(tabs));
-      for (const earlier of LEGACY_BROWSER_KEYS) storage.removeItem(earlier);
-      return;
-    } catch {
-    }
-  }
-};
-function migrateStorage(storage = globalThis.localStorage) {
-  for (const key of Object.values(STORAGE)) {
-    if (key === STORAGE.browsers) continue;
-    for (const legacy of legacyKeys(key)) {
-      try {
-        const value = storage.getItem(legacy);
-        if (value !== null && storage.getItem(key) === null) storage.setItem(key, value);
-        storage.removeItem(legacy);
-      } catch {
-      }
-    }
-  }
-  try {
-    migrateBrowsers(storage);
-  } catch {
-  }
-  try {
-    const prefs = JSON.parse(storage.getItem(STORAGE.prefs) ?? "null");
-    if (prefs && Object.hasOwn(LEGACY_THEMES, prefs.theme ?? "")) {
-      storage.setItem(STORAGE.prefs, JSON.stringify({ ...prefs, theme: LEGACY_THEMES[prefs.theme] }));
-    }
-  } catch {
-  }
 }
 
 // src/client/member-status.js
@@ -13532,7 +13851,7 @@ var ReloadIcon = icon(["M15.5 10a5.5 5.5 0 1 1-1.6-3.9", "M15.5 3.5v3.5H12"]);
 var StopIcon = icon(["M5.5 5.5l9 9M14.5 5.5l-9 9"]);
 var CloseIcon2 = icon(["M5.5 5.5l9 9M14.5 5.5l-9 9"]);
 var PlusTabIcon = icon(["M10 5v10M5 10h10"]);
-var LockIcon2 = icon(["M6.5 9V7a3.5 3.5 0 0 1 7 0v2", "M5.5 9h9v7h-9z"]);
+var LockIcon3 = icon(["M6.5 9V7a3.5 3.5 0 0 1 7 0v2", "M5.5 9h9v7h-9z"]);
 function Favicon({ src, className }) {
   const [failed, setFailed] = (0, import_react35.useState)(null);
   if (!src || failed === src) return (0, import_react35.createElement)("span", { className: `${className} bt-ptab-globe` }, (0, import_react35.createElement)(GlobeIcon));
@@ -13773,7 +14092,7 @@ function BrowserView({ bot, tabId, leaving, landed, actions, useBrowserPages }) 
       (0, import_react35.createElement)(
         "form",
         { className: "bt-browser-address", onSubmit: go, "data-editing": editing || void 0 },
-        (0, import_react35.createElement)("span", { className: "bt-browser-scheme", "aria-hidden": true }, (0, import_react35.createElement)(secure && !editing ? LockIcon2 : GlobeIcon)),
+        (0, import_react35.createElement)("span", { className: "bt-browser-scheme", "aria-hidden": true }, (0, import_react35.createElement)(secure && !editing ? LockIcon3 : GlobeIcon)),
         (0, import_react35.createElement)("input", {
           ref: input,
           type: "text",
@@ -15767,6 +16086,10 @@ function apply(ctx) {
     setPrefs: (prefs) => after(call("set-prefs", prefs)),
     setMain: (id, main = true, options = {}) => after(call("set-main", { id, main, ...options })),
     updateRoom: (id, patch) => after(call("update-room", { id, ...patch })),
+    createSpace: (payload) => after(call("create-space", payload)),
+    updateSpace: (id, patch) => after(call("update-space", { id, ...patch })),
+    deleteSpace: (id) => after(call("delete-space", { id })),
+    checkSpacePin: (id, pin) => call("check-space-pin", { id, pin }),
     send: (sessionId, text) => after(call("send", { sessionId: partFor(sessionId), text })),
     answerQuestion: (sessionId, questionId, answer) => after(call("answer-question", { sessionId: partFor(sessionId), questionId, answer })),
     dismissQuestion: (sessionId) => after(call("dismiss-question", { sessionId })),

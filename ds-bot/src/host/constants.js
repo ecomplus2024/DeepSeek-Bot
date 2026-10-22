@@ -54,6 +54,12 @@ export const ROOM_MODES = ['everyone', 'admin']
 export const ROOM_NAME_MAX = 60
 export const ROOM_NOTICE_MAX = 2000
 export const ROOM_MAX_MEMBERS = 12
+// A space is a sidebar label that groups Bots and group chats; it grants no access
+// rights and isolates nothing.
+export const SPACE_NAME_MAX = 40
+export const MAX_SPACES = 32
+export const SPACE_PIN_MIN = 4
+export const SPACE_PIN_MAX = 64
 
 // A team's one DSH Agent: a plain dsh entry in the sidebar, not a Bot. Its Sessions
 // are ordinary root Sessions, so the team tools must not be offered to them.
@@ -63,7 +69,8 @@ export const AGENT_SESSION_TITLE_MAX = 80
 // Desktop profile, so a restriction filters this list down to registered names.
 export const TEAM_TOOLS = [
   'list_bots', 'message_bot', 'stop_bot', 'create_bot', 'update_bot', 'list_models',
-  'create_group', 'update_group', 'delete_group', 'post_to_group', 'ask_user',
+  'create_group', 'update_group', 'delete_group', 'create_space', 'update_space', 'delete_space',
+  'post_to_group', 'ask_user',
   'request_secret', 'list_secrets', 'group_relay', 'read_own_chat',
   'read_group_chat', 'remember', 'forget', 'recall', 'read_browser',
   'list_capabilities', 'save_capability', 'delete_capability',

@@ -151,6 +151,27 @@ const ZH = {
   'Open settings to set up a custom model': '打开设置配置自定义模型',
   'DS Bot': 'DS Bot',
 
+  // Spaces
+  Space: '空间',
+  'Spaces · {count}': '空间 · {count}',
+  Ungrouped: '未分组',
+  'New space': '新建空间',
+  'Space name': '空间名',
+  'No color': '无颜色',
+  '{count} listed': '{count} 项',
+  'Groups Bots and group chats in the sidebar.': '在侧边栏里给 Bot 和群聊分组。',
+  'Files this Bot under a sidebar section.': '把这个 Bot 放进侧边栏的一个分区。',
+  'Files this group under a sidebar section.': '把这个群聊放进侧边栏的一个分区。',
+  'Click again to delete. Its members go back to Ungrouped.': '再点一次删除，里面的条目回到「未分组」。',
+  PIN: 'PIN',
+  'Space PIN': '空间 PIN',
+  'The sidebar asks for it before opening the section.': '打开这个分区前侧边栏会先问 PIN。',
+  'Not set': '未设置',
+  '4–64 characters': '4–64 个字符',
+  Set: '设置',
+  Locked: '已锁定',
+  'Wrong PIN': 'PIN 不对',
+
   // Header
   'Message {name}': '给 {name} 发消息',
   Message: '发消息',
@@ -921,6 +942,11 @@ const HOST_ERRORS = [
   [/^A group chat holds at most (\d+) Bots$/, '一个群聊最多 $1 个 Bot'],
   [/^Reply mode must be one of (.+)$/, '回复模式只能是 $1'],
   [/^Only the user, a Main Bot, or the admin of "(.+)" can change it$/, '只有你、主 Bot 或「$1」的管理员可以修改'],
+  [/^A space named "(.+)" already exists$/, '已经有叫「$1」的空间了'],
+  [/^No space named (.+)$/, '没有叫 $1 的空间'],
+  [/^A team holds at most (\d+) spaces$/, '一个团队最多 $1 个空间'],
+  [/^Only the user or a Main Bot can set the space of "(.+)"$/, '只有你或主 Bot 可以设置「$1」的空间'],
+  [/^A space PIN needs (\d+)–(\d+) characters$/, '空间 PIN 需要 $1–$2 个字符'],
   [/^A key must have at least (\d+) characters$/, '密钥至少 $1 个字符'],
   [/^A key can have at most (\d+) characters$/, '密钥最多 $1 个字符'],
   [/^(.+) is not saved yet$/, '$1 还没有保存'],
@@ -975,6 +1001,8 @@ const HOST_ZH = {
   'Write the entry to save.': '请写下要保存的内容。',
   'This DeepSeek Harness has no folder chooser': '这个 DeepSeek Harness 没有文件夹选择窗口',
   'This DeepSeek Harness cannot list folders': '这个 DeepSeek Harness 不能列出文件夹',
+  'A space needs a name': '空间需要一个名字',
+  'Unknown space': '找不到这个空间',
 }
 Object.assign(ZH, HOST_ZH)
 
@@ -1124,6 +1152,27 @@ const VI = {
   'Enter a DeepSeek API key': 'Nhập API key DeepSeek',
   'Open settings to set up a custom model': 'Mở cài đặt để thiết lập model tùy chỉnh',
   'DS Bot': 'DS Bot',
+
+  // Spaces
+  Space: 'Khu vực',
+  'Spaces · {count}': 'Khu vực · {count}',
+  Ungrouped: 'Chưa nhóm',
+  'New space': 'Khu vực mới',
+  'Space name': 'Tên khu vực',
+  'No color': 'Không màu',
+  '{count} listed': '{count} mục',
+  'Groups Bots and group chats in the sidebar.': 'Nhóm Bot và nhóm chat trong thanh bên.',
+  'Files this Bot under a sidebar section.': 'Xếp Bot này vào một mục trong thanh bên.',
+  'Files this group under a sidebar section.': 'Xếp nhóm chat này vào một mục trong thanh bên.',
+  'Click again to delete. Its members go back to Ungrouped.': 'Nhấn lần nữa để xóa. Các mục bên trong quay về Chưa nhóm.',
+  PIN: 'PIN',
+  'Space PIN': 'PIN khu vực',
+  'The sidebar asks for it before opening the section.': 'Thanh bên sẽ hỏi PIN trước khi mở mục này.',
+  'Not set': 'Chưa đặt',
+  '4–64 characters': '4–64 ký tự',
+  Set: 'Đặt',
+  Locked: 'Đã khoá',
+  'Wrong PIN': 'Sai PIN',
 
   // Header
   'Message {name}': 'Nhắn tin cho {name}',
@@ -1893,6 +1942,11 @@ const HOST_ERRORS_VI = [
   [/^A group chat holds at most (\d+) Bots$/, 'Một nhóm chat chứa tối đa $1 Bot'],
   [/^Reply mode must be one of (.+)$/, 'Chế độ trả lời chỉ được là $1'],
   [/^Only the user, a Main Bot, or the admin of "(.+)" can change it$/, 'Chỉ bạn, Bot chính hoặc quản trị viên của “$1” mới có thể sửa'],
+  [/^A space named "(.+)" already exists$/, 'Đã có khu vực tên “$1”'],
+  [/^No space named (.+)$/, 'Không có khu vực tên $1'],
+  [/^A team holds at most (\d+) spaces$/, 'Một đội chứa tối đa $1 khu vực'],
+  [/^Only the user or a Main Bot can set the space of "(.+)"$/, 'Chỉ bạn hoặc Bot chính mới đặt được khu vực của “$1”'],
+  [/^A space PIN needs (\d+)–(\d+) characters$/, 'PIN khu vực cần $1–$2 ký tự'],
   [/^A key must have at least (\d+) characters$/, 'Khóa phải có ít nhất $1 ký tự'],
   [/^A key can have at most (\d+) characters$/, 'Khóa chỉ được tối đa $1 ký tự'],
   [/^(.+) is not saved yet$/, '$1 chưa được lưu'],
@@ -1946,6 +2000,8 @@ const HOST_VI = {
   'Write the entry to save.': 'Hãy viết nội dung cần lưu.',
   'This DeepSeek Harness has no folder chooser': 'DeepSeek Harness này không có hộp chọn thư mục',
   'This DeepSeek Harness cannot list folders': 'DeepSeek Harness này không liệt kê được thư mục',
+  'A space needs a name': 'Khu vực cần có tên',
+  'Unknown space': 'Không tìm thấy khu vực này',
 }
 Object.assign(VI, HOST_VI)
 

@@ -247,6 +247,11 @@ export function BotSettingsForm({ bot, roster, actions, run }) {
         : h(SwitchRow, { label: t('Main Bot'), hint: t('Can create and change Bots, and runs every group chat.'), on: isMainBot, onChange: on => run(actions.setMain(bot.id, on)) })),
     // The Main Bot tile is always first and always shown, like in the context menu.
     isTile ? null : h(Card, { title: t('Sidebar') },
+      (roster.spaces ?? []).length === 0 ? null : h('div', { className: 'bt-set-row bt-bs-row' },
+        h('span', { className: 'bt-set-copy' }, h('span', { className: 'bt-bs-label' }, t('Space')), h('span', { className: 'bt-set-hint' }, t('Files this Bot under a sidebar section.'))),
+        h('select', { className: 'bt-select', 'aria-label': t('Space'), value: bot.space ?? '', onChange: event => save({ space: event.target.value === '' ? null : event.target.value }) },
+          h('option', { value: '' }, t('Ungrouped')),
+          (roster.spaces ?? []).map(space => h('option', { key: space.id, value: space.id }, space.name)))),
       h(SwitchRow, { label: t('Pin'), hint: t('Kept above the other chats.'), on: bot.pinned === true, onChange: pinned => run(actions.setFlags(bot.id, { pinned })) }),
       isMainBot ? null : h(SwitchRow, { label: t('Hide from sidebar'), hint: t('Search still finds it.'), on: bot.hidden === true, onChange: hidden => run(actions.setFlags(bot.id, { hidden })) })),
     h(Card, { title: t('Manage') },

@@ -1,4 +1,4 @@
-import { createElement as h, useCallback, useEffect, useRef, useState } from 'react'
+import { createElement as h, Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { ACCENT_INKS, INKS } from './inks.js'
 import { isMainOf } from './sources.js'
 import { allThemes } from './themes.js'
@@ -6,7 +6,7 @@ import { CloseIcon, ChevronLeftIcon, ChevronRightIcon, ClockIcon, ConnectorIcon,
 import { AdminStar, BotAvatar, RoomAvatar } from './mark.js'
 import { openHarnessSettings } from './sidebar.js'
 import { useEscape } from './overlay-hooks.js'
-import { BotSettingsForm, Switch } from './bot-settings.js'
+import { BotSettingsForm, InlineText, Switch } from './bot-settings.js'
 import { Segmented, useGlide } from './motion.js'
 import { GroupSettingsForm, NewGroupForm } from './group-settings.js'
 import { CreateBot } from './create-bot.js'
@@ -137,6 +137,54 @@ function MainBotsSection({ roster, actions, run }) {
       }, h('option', { value: '' }, t('Choose a Bot…')), candidates.map(bot => h('option', { key: bot.id, value: bot.id }, bot.name)))) : null)
 }
 
+// Sidebar spaces: named sections that group Bots and group chats. They organize
+// the list only; a deleted space releases its members back to Ungrouped.
+function SpaceRow({ space, count, actions, run }) {
+  const [confirming, setConfirming] = useState(false)
+  const [pin, setPin] = useState('')
+  useEffect(() => {
+    if (!confirming) return undefined
+    const timer = setTimeout(() => setConfirming(false), 4000)
+    return () => clearTimeout(timer)
+  }, [confirming])
+  const savePin = async () => {
+    if (await run(actions.updateSpace(space.id, { pin }))) setPin('')
+  }
+  return h(Fragment, null,
+    h(SetRow, {
+      label: h(InlineText, { label: t('Space name'), value: space.name, required: true, maxLength: 40, onSave: name => run(actions.updateSpace(space.id, { name })) }),
+      hint: confirming ? t('Click again to delete. Its members go back to Ungrouped.') : t('{count} listed', { count }),
+    },
+      h('div', { className: 'bt-swatches' },
+        h('button', { type: 'button', className: 'bt-swatch bt-swatch-default', title: t('No color'), 'aria-label': t('No color'), 'aria-pressed': space.color === undefined, onClick: () => run(actions.updateSpace(space.id, { color: null })) }),
+        ACCENT_INKS.map(ink => h('button', {
+          key: ink, type: 'button', className: 'bt-swatch', title: t(capitalize(ink)), 'aria-label': t(capitalize(ink)), 'aria-pressed': space.color === ink,
+          style: { background: INKS[ink][0] }, onClick: () => run(actions.updateSpace(space.id, { color: ink })),
+        }))),
+      h('button', { type: 'button', className: confirming ? 'bt-soft bt-soft-sm bt-danger' : 'bt-soft bt-soft-sm', 'data-confirm': confirming || undefined, onClick: () => { if (confirming) void run(actions.deleteSpace(space.id)); else setConfirming(true) } }, t('Delete'))),
+    // Soft lock: the PIN gates the sidebar section on each browser, nothing more.
+    h(SetRow, { label: t('PIN'), hint: space.locked ? t('The sidebar asks for it before opening the section.') : t('Not set') },
+      h('input', { type: 'password', className: 'bt-bs-input', autoComplete: 'new-password', value: pin, maxLength: 64, placeholder: t('4–64 characters'), 'aria-label': t('Space PIN'), onChange: event => setPin(event.target.value), onKeyDown: event => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) void savePin() } }),
+      h('button', { type: 'button', className: 'bt-soft bt-soft-sm', disabled: pin.length < 4, onClick: () => void savePin() }, t('Set')),
+      space.locked ? h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: () => run(actions.updateSpace(space.id, { pin: null })) }, t('Clear')) : null))
+}
+
+function SpacesSection({ roster, actions, run }) {
+  const spaces = roster.spaces ?? []
+  const [name, setName] = useState('')
+  const members = id => roster.bots.filter(bot => bot.space === id).length + roster.rooms.filter(room => room.space === id).length
+  const create = async () => {
+    const text = name.trim()
+    if (text === '' || await run(actions.createSpace({ name: text })) !== true) return
+    setName('')
+  }
+  return h(SetSection, { title: t('Spaces · {count}', { count: spaces.length }) },
+    spaces.map(space => h(SpaceRow, { key: space.id, space, count: members(space.id), actions, run })),
+    h(SetRow, { label: t('New space'), hint: t('Groups Bots and group chats in the sidebar.') },
+      h('input', { className: 'bt-bs-input', value: name, maxLength: 40, placeholder: t('Space name'), 'aria-label': t('Space name'), onChange: event => setName(event.target.value), onKeyDown: event => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) void create() } }),
+      h('button', { type: 'button', className: 'bt-soft bt-soft-sm', disabled: name.trim() === '', onClick: () => void create() }, t('Create'))))
+}
+
 const MOTIONS = [['quiet', 'Quiet'], ['normal', 'Normal'], ['lively', 'Lively']]
 function MotionSection({ roster, actions, run }) {
   const motion = roster.prefs?.motion === 'quiet' || roster.prefs?.motion === 'lively' ? roster.prefs.motion : 'normal'
@@ -152,6 +200,7 @@ function BotsPage({ roster, actions, run }) {
   const [creating, setCreating] = useState(false)
   return [
     h(MainBotsSection, { key: 'main', roster, actions, run }),
+    h(SpacesSection, { key: 'spaces', roster, actions, run }),
     h(MotionSection, { key: 'motion', roster, actions, run }),
     creating
       ? h(CreateBot, { key: 'create', roster, actions, inline: true, onBack: () => setCreating(false), onCreated: bot => actions.openSettings('bots', bot.id) })
