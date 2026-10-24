@@ -76,7 +76,7 @@ test('a Bot with no model yet changes nothing until the user picks one', async (
 
 // A runtime with two providers, a DSH default, and a session controller that, like
 // DSH, saves every Session selection as the default.
-function bench({ providers = { deepseek: ['v4-flash'], stepfun: ['step-5'] }, fallback = { provider: 'stepfun', model: 'step-5' }, reasoning = {} } = {}) {
+function bench({ providers = { deepseek: ['v4-flash'], stepfun: ['step-5'] }, fallback = { provider: 'stepfun', model: 'step-5' }, reasoning = {}, vision = [] } = {}) {
   let current = { ...fallback }
   const selected = []
   const saved = []
@@ -88,7 +88,7 @@ function bench({ providers = { deepseek: ['v4-flash'], stepfun: ['step-5'] }, fa
       : undefined),
     llm: {
       listProviders: () => Object.keys(providers).map(id => ({ id, name: id.toUpperCase() })),
-      listModels: async id => providers[id].map(model => ({ id: model, name: model, inputModalities: ['text'] })),
+      listModels: async id => providers[id].map(model => ({ id: model, name: model, inputModalities: vision.includes(`${id}/${model}`) ? ['text', 'image'] : ['text'] })),
       resolveModelInfo: async (provider, model) => reasoning[`${provider}/${model}`] ?? {},
     },
     sessionController: {
@@ -98,7 +98,7 @@ function bench({ providers = { deepseek: ['v4-flash'], stepfun: ['step-5'] }, fa
       },
     },
   }
-  const rt = { ctx, state: { bots: {} }, chatOf: id => id, groupSessionsOf: () => [], save: async () => {}, warn: () => {} }
+  const rt = { ctx, state: { bots: {}, rooms: {} }, chatOf: id => id, groupSessionsOf: () => [], save: async () => {}, warn: () => {} }
   install(rt)
   return { rt, selected, saved, providers, listeners, current: () => current }
 }
@@ -185,4 +185,49 @@ test('a Bot on the default model with its own thinking level leaves the default 
   }
   await rt.applyModel({ id: 'b1', model: 'deepseek/v4-flash', effort: 'low' })
   assert.deepEqual(current(), fallback)
+})
+
+test('a group chat Session takes a model that reads images, since it never consults one', async () => {
+  // The DSH default reads images: a new group keeps it, and nothing is re-selected.
+  const same = bench({ vision: ['stepfun/step-5'] })
+  const kept = { id: 'r1', name: 'Ops' }
+  assert.equal(await same.rt.applyRoomModel(kept, { fresh: true }), 'stepfun/step-5')
+  assert.deepEqual(same.selected, [])
+  assert.equal(kept.appliedModel, 'stepfun/step-5')
+
+  // The default cannot read them: the first served model that does takes the room, and
+  // the user's own DSH default stays as it was.
+  const other = bench({ vision: ['deepseek/v4-flash'] })
+  const taken = { id: 'r2', name: 'Ops' }
+  assert.equal(await other.rt.applyRoomModel(taken, { fresh: true }), 'deepseek/v4-flash')
+  assert.deepEqual(other.selected, ['r2:deepseek/v4-flash'])
+  assert.deepEqual(other.current(), { provider: 'stepfun', model: 'step-5' })
+  // A second pass over the same room selects nothing again.
+  await other.rt.applyRoomModel(taken)
+  assert.equal(other.selected.length, 1)
+
+  // No served model reads images: the room is left as DSH made it.
+  const none = bench()
+  assert.equal(await none.rt.applyRoomModel({ id: 'r3', name: 'Ops' }), undefined)
+  assert.deepEqual(none.selected, [])
+})
+
+test('a model sync also fixes the groups made before it', async () => {
+  const { rt, selected } = bench({ vision: ['deepseek/v4-flash'] })
+  rt.state.rooms.r1 = { id: 'r1', name: 'Ops' }
+  await rt.syncModels()
+  assert.deepEqual(selected, ['r1:deepseek/v4-flash'])
+})
+
+test('a group made when the default reads images keeps it, and one made earlier is repaired', async () => {
+  const { rt, selected } = bench({ vision: ['stepfun/step-5'] })
+  const made = { id: 'r1', name: 'Ops' }
+  assert.equal(await rt.applyRoomModel(made, { fresh: true }), 'stepfun/step-5')
+  assert.deepEqual(selected, [])
+  assert.equal(made.appliedModel, 'stepfun/step-5')
+  // A group from an older version has no record: its Session may run another model, so it
+  // is selected even though the default reads images.
+  const older = { id: 'r0', name: 'Ops' }
+  assert.equal(await rt.applyRoomModel(older), 'stepfun/step-5')
+  assert.deepEqual(selected, ['r0:stepfun/step-5'])
 })

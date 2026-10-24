@@ -466,6 +466,9 @@ export function install(rt) {
       state.rooms[id] = room
       await rt.save()
       if (name !== title) await retitleRoom(room)
+      // The group's own Session never consults the model, but it takes the pictures the
+      // user posts, so it needs one that reads them (models.js).
+      await rt.applyRoomModel(room, { fresh: true }).catch(error => rt.warn('ds-bot: model for group "%s" not applied: %s', name, error))
       return room
     } catch (error) {
       // The group's Session was already made: archive it instead of leaving an orphan.

@@ -163,6 +163,33 @@ export function install(rt) {
     return ref
   }
 
+  // The model a group chat's own Session runs on. That Session never consults the model
+  // (groups.js synthesizes its relay), but DSH admits a message with images only when the
+  // Session's model declares image input, so a picture the user posts would be turned down
+  // before any member reads it. The default model is kept when it reads images; else the
+  // first served model that does.
+  async function roomModel() {
+    const entries = await catalog()
+    const readers = entries.filter(entry => entry.input?.includes('image')).map(entry => entry.ref)
+    const fallback = pickDefault(entries)
+    return { ref: readers.includes(fallback) ? fallback : readers[0], fallback }
+  }
+
+  // `fresh`: the Session was just made, so it runs the DSH default already and only
+  // another model is selected. A group from an older version may run anything, so it is
+  // selected either way.
+  async function applyRoomModel(room, { fresh = false } = {}) {
+    const { ref, fallback } = await roomModel()
+    if (ref === undefined || room.appliedModel === ref) return ref
+    if (fresh && ref === fallback) room.appliedModel = ref
+    else {
+      await selectSessionModel(room.id, splitRef(ref))
+      room.appliedModel = ref
+    }
+    await rt.save()
+    return ref
+  }
+
   // A provider may register after the plugin starts; a greeting waits for its Bot's
   // model instead of failing with "no adapter registered".
   async function waitForModel(bot, ms = ROUTE_WAIT_MS) {
@@ -192,11 +219,14 @@ export function install(rt) {
     for (const bot of Object.values(state.bots)) {
       await applyModel(bot).catch(error => rt.warn('ds-bot: model for %s not applied: %s', bot.name, error))
     }
+    for (const room of Object.values(state.rooms ?? {})) {
+      await applyRoomModel(room).catch(error => rt.warn('ds-bot: model for group "%s" not applied: %s', room.name, error))
+    }
   }
 
   Object.assign(rt, {
     catalog, cachedCatalog: () => catalogCache.value, cachedDefault: () => pickDefault(catalogCache.value),
     defaultRef, defaultModel, resolveModel, desiredModel, reasoningOf, resolveEffort, desiredEffort,
-    selectSessionModel, applyModel, waitForModel, syncModels,
+    selectSessionModel, applyModel, applyRoomModel, waitForModel, syncModels,
   })
 }
