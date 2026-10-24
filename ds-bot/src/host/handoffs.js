@@ -5,7 +5,7 @@
 // that came back, together with what came back. Results find their way up by
 // themselves, so no Bot needs to message one that waits for it, and that is the one
 // hand-off refused. The open works are kept in state.json so a restart waits on.
-import { TEXT_KEPT } from './constants.js'
+import { TEXT_KEPT, WORK_NUDGE_SPINS } from './constants.js'
 import { headOf } from './text.js'
 
 const minutes = since => {
@@ -30,7 +30,20 @@ export function install(rt) {
   function openWork(id, { from, to, parent, fromRoom, room }) {
     const above = parent === undefined ? undefined : works()[parent]
     works()[id] = { ...(from ? { from } : {}), ...(to ? { to } : {}), ...(room ? { room } : {}), ...(above ? { parent } : {}), ...(fromRoom ? { fromRoom } : {}), open: [], results: [], at: Date.now() }
-    if (above !== undefined) above.open.push(id)
+    if (above !== undefined) {
+      above.open.push(id)
+      // Each hand-on is churn under every asker up the tree: past the note line that
+      // Bot gets woken to look, then again each time the count doubles — a nudge the
+      // waiting Bot cannot give itself, not a limit on the work.
+      for (let up = parent; up !== undefined && works()[up] !== undefined; up = works()[up].parent) {
+        const waiting = works()[up]
+        waiting.spins = (waiting.spins ?? 0) + 1
+        if (waiting.from !== undefined && waiting.spins === (waiting.nudgeAt ?? WORK_NUDGE_SPINS)) {
+          waiting.nudgeAt = waiting.spins * 2
+          void nudge(up, waiting).catch(error => rt.warn('ds-bot: work note to %s failed: %s', waiting.from, error))
+        }
+      }
+    }
     save()
   }
 
@@ -91,6 +104,21 @@ export function install(rt) {
     })
     if (results.length === 0) return said || `${botName} finished without a reply.`
     return [said || `${botName} finished and wrote nothing more.`, `[Handed back to ${botName} for this work]`, ...results].join('\n\n')
+  }
+
+  // The note that wakes the asking Bot: a turn of its own to check the work, steer or
+  // stop it, or report. It is no exchange and owes no reply.
+  async function nudge(id, work) {
+    if (rt.botOf(work.from) === undefined) return
+    const target = work.room !== undefined ? `the post in group "${rt.roomOf(work.room)?.name ?? 'a group'}"` : (nameOf(work.to) ?? 'a teammate')
+    const asked = state.exchanges?.find(entry => entry.id === id)?.text
+    const quote = asked === undefined ? '' : ` You asked: "${headOf(asked, 160)}${asked.length > 160 ? '…' : ''}".`
+    const stop = rt.isMain?.(work.from) ? ', stop it with stop_bot' : ''
+    await rt.deliver({
+      toId: work.from,
+      role: 'note',
+      text: `The work you handed to ${target} has passed through ${work.spins} messages between Bots and has not come back.${quote} If it is not going as it should: call list_bots to see who holds it, steer it with message_bot${stop}, or tell the user. If it is on track, ignore this — the next note comes only after twice as many.`,
+    })
   }
 
   // The Bots waiting for the result of these works: whoever asked for each, and on up.

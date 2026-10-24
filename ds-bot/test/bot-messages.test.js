@@ -567,6 +567,29 @@ test('a Bot may take part in the same work again, but not message one that waits
   await assert.rejects(tool('message_bot', { to: 'Chief', message: 'done' }, 'c'), refused)
 })
 
+test('work handed on again and again wakes the Bot that asked with a team note', async (t) => {
+  const team = await start(threeBots())
+  t.after(team.stop)
+  const { agents, tool } = team
+  const { take, end } = await handedOn(team)
+  const notes = () => callsOf(agents, 'a').filter(([, message]) => message.source?.role === 'note')
+  // Writer hands on to Tester twelve times under Chief's work; Tester answers each time.
+  for (let round = 2; round <= 12; round += 1) {
+    end('b', `sent round ${round - 1}`)
+    take('c')
+    end('c', `back ${round - 1}`)
+    await settled(() => callsOf(agents, 'b').length === round)
+    take('b')
+    await tool('message_bot', { to: 'Tester', message: `round ${round}` }, 'b')
+  }
+  await settled(() => notes().length === 2)
+  const first = textOf(notes()[0][1].content)
+  assert.match(first, /^\[Team note\]\nThe work you handed to Writer has passed through 6 messages between Bots and has not come back\. You asked: "carry out the plan"\./)
+  assert.match(textOf(notes()[1][1].content), /passed through 12 messages/)
+  // The note is no exchange: nothing is recorded and Writer is never blocked from asking.
+  assert.deepEqual(notes().map(([, message]) => message.source.senderSessionId), [undefined, undefined])
+})
+
 test('a stopped turn answers at once, and what it handed on comes back to it alone', async (t) => {
   const team = await start(threeBots())
   t.after(team.stop)

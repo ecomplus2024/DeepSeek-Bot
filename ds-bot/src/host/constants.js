@@ -21,6 +21,9 @@ export const OCR_CACHE_MAX = 500
 export const MAX_AVATAR_IMAGE = 160_000
 export const ROUTE = '/api/bot'
 export const MAX_EXCHANGES = 600
+// A work handed on this many more times without coming back wakes the asking Bot with a
+// team note, then again each time the count doubles — a chance to steer, not a limit.
+export const WORK_NUDGE_SPINS = 6
 // state.json is written whole on every save, so a long message between Bots or a long
 // group line keeps only its start there. The rest stays where it already is (a message
 // in the Session it was delivered to) or in a file of its own (a group line).

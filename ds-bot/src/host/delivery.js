@@ -23,6 +23,7 @@ export function install(rt) {
     if (retried && role !== 'room') return '[Your last reply wrote a tool call as text, so nothing ran]'
     if (resumed && role === 'resume') return '[DeepSeek Harness restarted while you were working]'
     if (resumed && role !== 'room') return `[Message from ${fromName} · DeepSeek Harness restarted while you were working on it]`
+    if (role === 'note') return '[Team note]'
     if (role === 'reply') return `[Reply from ${fromName}${goesOn}]`
     if (role === 'stopped') return `[Stopped by ${fromName}]`
     if (role === 'zalo') return `[Zalo · ${note}]`
