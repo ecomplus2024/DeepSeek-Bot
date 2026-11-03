@@ -21,6 +21,9 @@ export const OCR_CACHE_MAX = 500
 export const MAX_AVATAR_IMAGE = 160_000
 export const ROUTE = '/api/bot'
 export const MAX_EXCHANGES = 600
+// A work handed on this many more times without coming back wakes the asking Bot with a
+// team note, then again each time the count doubles — a chance to steer, not a limit.
+export const WORK_NUDGE_SPINS = 6
 // state.json is written whole on every save, so a long message between Bots or a long
 // group line keeps only its start there. The rest stays where it already is (a message
 // in the Session it was delivered to) or in a file of its own (a group line).
@@ -54,6 +57,12 @@ export const ROOM_MODES = ['everyone', 'admin']
 export const ROOM_NAME_MAX = 60
 export const ROOM_NOTICE_MAX = 2000
 export const ROOM_MAX_MEMBERS = 12
+// A space is a sidebar label that groups Bots and group chats; it grants no access
+// rights and isolates nothing.
+export const SPACE_NAME_MAX = 40
+export const MAX_SPACES = 32
+export const SPACE_PIN_MIN = 4
+export const SPACE_PIN_MAX = 64
 
 // A team's one DSH Agent: a plain dsh entry in the sidebar, not a Bot. Its Sessions
 // are ordinary root Sessions, so the team tools must not be offered to them.
@@ -64,15 +73,61 @@ export const AGENT_SESSION_TITLE_MAX = 80
 // profile, so the list served to one session can be shorter.
 export const TEAM_TOOLS = [
   'list_bots', 'message_bot', 'stop_bot', 'create_bot', 'update_bot', 'list_bot_models',
-  'create_group', 'update_group', 'delete_group', 'post_to_group', 'ask_user', 'show_view',
+  'create_group', 'update_group', 'delete_group', 'create_space', 'update_space', 'delete_space',
+  'post_to_group', 'ask_user', 'show_view',
   'request_secret', 'list_secrets', 'group_relay', 'read_own_chat',
   'read_group_chat', 'remember', 'forget', 'recall', 'read_browser',
   'list_capabilities', 'save_capability', 'delete_capability',
   'attach_capability', 'detach_capability', 'group_goal',
+  'gemlogin_profiles', 'gemlogin_open', 'gemlogin_close', 'gemlogin_browse',
+  'chromium_open', 'chromium_close', 'chromium_browse',
+  'use_computer',
+  'zalo_threads', 'zalo_read', 'zalo_send', 'telegram_send',
 ]
 // Consecutive automatic admin wakes with no goal progress before the goal waits
 // for the user instead of waking the admin again.
 export const GOAL_IDLE_NUDGES = 2
+
+// Zalo (src/host/zalo.js): a bound Bot's watched threads keep this many inbound
+// messages; sends are spaced and capped so a personal account does not trip Zalo.
+export const ZALO_MODES = ['off', 'talk', 'watch']
+export const ZALO_BUFFER_MAX = 50
+export const ZALO_WAKE_LINES = 30
+// A watch thread wakes the Bot at most this often; quieter mentions just
+// stay in the buffer until the next real wake or a zalo_read.
+export const ZALO_WAKE_COOLDOWN_MS = 120_000
+export const ZALO_SEND_GAP_MS = 3_000
+export const ZALO_SEND_WINDOW_MS = 600_000
+export const ZALO_SEND_MAX = 20
+// A reply carries the message it answers; only this much of it is quoted in
+// the buffer line so the Bot sees what the sender answers without flooding it.
+export const ZALO_QUOTE_CHARS = 160
+// Older lines zalo_read pulls in: kept beside the live buffer under one cap,
+// one page reads at most ZALO_READ_MAX, one fetch asks Zalo for ZALO_FETCH_MAX.
+export const ZALO_HISTORY_MAX = 500
+export const ZALO_READ_PAGE = 30
+export const ZALO_READ_MAX = 100
+export const ZALO_FETCH_MAX = 200
+// A requestOldMessages sync is answered by an 'old_messages' event — or not at
+// all on a dead socket, so a read waits this long then serves what is stored.
+export const ZALO_SYNC_TIMEOUT_MS = 10_000
+// Telegram (src/host/telegram.js): a Bot reaches the user through its own bot
+// token, so no inbound port is needed — getUpdates long-polls out. Telegram
+// caps one message at 4096 characters; replies are split under that. Sends are
+// spaced per chat so a burst does not trip Telegram's own rate limit.
+export const TELEGRAM_MESSAGE_MAX = 4000
+// Telegram photo captions stop at 1024 characters; longer text follows as messages.
+export const TELEGRAM_CAPTION_MAX = 1024
+export const TELEGRAM_POLL_TIMEOUT_S = 50
+export const TELEGRAM_SEND_GAP_MS = 1_200
+// A pairing code is typed once in Telegram to bind the chat to its Bot; it
+// lives this long before the Bot asks for a fresh one.
+export const TELEGRAM_PAIR_TTL_MS = 24 * 60 * 60 * 1000
+// Photos the Bot sends or receives stay under this size, like Zalo's own limit.
+export const TELEGRAM_IMAGE_MAX_BYTES = 15 * 1024 * 1024
+// Answers a group gives to what members post after the round moved on (their finished
+// work, mostly), before the user speaks there again.
+export const ROOM_LATE_ROUNDS = 10
 // A member still at work this long after its first tool call lets the round go on; it
 // posts its reply when the work is done.
 export const ROOM_WORK_GRACE_MS = 15_000

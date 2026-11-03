@@ -95,7 +95,7 @@ async function boot(home, seed) {
     sessionTitle: { rename: async () => {} },
     sessions: { flush: async () => {} },
   })
-  rt = createRuntime(ctx, { home })
+  rt = createRuntime(ctx, { home, wake: false })
   let seq = 0
   const emit = (id, type, data) => {
     for (const listener of ctx.listeners.get('session/event') ?? []) {

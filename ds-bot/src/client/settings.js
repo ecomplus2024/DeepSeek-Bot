@@ -1,11 +1,12 @@
-import { createElement as h, useCallback, useEffect, useRef, useState } from 'react'
+import { createElement as h, Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { ACCENT_INKS, INKS } from './inks.js'
 import { isMainOf } from './sources.js'
 import { MESSAGE_WIDTH, allThemes, flatWidthOf, layoutOf, thinkingShown, widthOf } from './themes.js'
 import { CloseIcon, ChevronLeftIcon, ChevronRightIcon, ClockIcon, ConnectorIcon, InfoIcon, PlugIcon, PlusIcon, SlidersIcon, SETTINGS_ICONS } from './icons.js'
 import { AdminStar, BotAvatar, RoomAvatar } from './mark.js'
+import { canEditProviders, openHarnessSettings } from './sidebar.js'
 import { useEscape } from './overlay-hooks.js'
-import { BotSettingsForm, Switch } from './bot-settings.js'
+import { BotSettingsForm, InlineText, Switch } from './bot-settings.js'
 import { Segmented, useGlide } from './motion.js'
 import { GroupSettingsForm, NewGroupForm } from './group-settings.js'
 import { CreateBot } from './create-bot.js'
@@ -21,6 +22,7 @@ import { AboutPage } from './about.js'
 import { ProvidersPage } from './providers-page.js'
 import { FolderMenu } from './folder-menu.js'
 import { ModelMenu } from './model-menu.js'
+import { pushSupported, pushSubscribed, subscribePush, unsubscribePush } from './pwa.js'
 import { t } from './i18n.js'
 
 const capitalize = word => word[0].toUpperCase() + word.slice(1)
@@ -121,6 +123,9 @@ function GeneralPage({ roster, actions, run }) {
     actions.setSurface ? h(SetSection, { key: 'mode', title: t('Mode') },
       h(SetRow, { label: t('Classic Agent mode') },
         h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: () => actions.setSurface('agent') }, t('Switch')))) : null,
+    h(SetSection, { key: 'device', title: t('This device') },
+      h(NotifyRow, { key: 'notify' }),
+      h(PairRow, { key: 'pair', pair: roster.pair, actions, run })),
     h(LocationsSection, { key: 'places', actions, run }),
   ]
 }
@@ -158,6 +163,47 @@ function LocationsSection({ actions, run }) {
       data.fixed ? null : h('button', { type: 'button', className: 'bt-soft bt-soft-sm', disabled: moving, onClick: () => { if (!busy.current) void run(app.moveData(team ?? undefined)) } }, t('Change…'))))
 }
 
+// Push notes are per device: the subscription lives in this browser's service
+// worker, not in the team state. Unsupported (no HTTPS, no PushManager) reads as
+// a disabled row with the reason.
+function NotifyRow() {
+  const [subscribed, setSubscribed] = useState(null)
+  const [error, setError] = useState('')
+  useEffect(() => { void pushSubscribed().then(sub => setSubscribed(sub !== null)).catch(() => setSubscribed(false)) }, [])
+  if (!pushSupported()) {
+    return h(SetRow, { label: t('Notifications'), hint: t('This device cannot get push notes — they need HTTPS.') })
+  }
+  const toggle = async (on) => {
+    setError('')
+    try {
+      if (on) await subscribePush()
+      else await unsubscribePush()
+      setSubscribed(on)
+    } catch (failure) { setError(failure?.message ?? String(failure)) }
+  }
+  return h(SetRow, {
+    label: t('Notifications'),
+    hint: error !== '' ? error : t('A push note when a Bot waits for you.'),
+  }, h(Switch, { on: subscribed === true, label: t('Notifications'), disabled: subscribed === null, onChange: toggle }))
+}
+
+// A PIN exists only after the owner asks for one here: the gate's pairing
+// window is opened deliberately, never by an unsolicited visitor.
+function PairRow({ pair, actions, run }) {
+  if (pair?.enabled !== true) return null
+  const cooling = Boolean(pair.cooldownUntil)
+  return h(SetRow, {
+    label: t('Pair a device'),
+    hint: pair.pin
+      ? t('Type this PIN on the other device within 5 minutes.')
+      : cooling
+        ? t('PIN tries are cooling down for a moment.')
+        : t('Open DS Bot on the other device at port {port}, then type the PIN it asks for.', { port: pair.port }),
+  }, pair.pin
+    ? h('span', { className: 'bt-pair-pin' }, pair.pin)
+    : h('button', { type: 'button', className: 'bt-soft bt-soft-sm', disabled: cooling, onClick: () => run(actions.pairMint()) }, t('Generate PIN')))
+}
+
 // The first Main Bot is the sidebar tile. Picking another Bot there hands it the role
 // in one step; more Main Bots can sit beside it.
 function MainBotsSection({ roster, actions, run }) {
@@ -183,6 +229,54 @@ function MainBotsSection({ roster, actions, run }) {
       }, h('option', { value: '' }, t('Choose a Bot…')), candidates.map(bot => h('option', { key: bot.id, value: bot.id }, bot.name)))) : null)
 }
 
+// Sidebar spaces: named sections that group Bots and group chats. They organize
+// the list only; a deleted space releases its members back to Ungrouped.
+function SpaceRow({ space, count, actions, run }) {
+  const [confirming, setConfirming] = useState(false)
+  const [pin, setPin] = useState('')
+  useEffect(() => {
+    if (!confirming) return undefined
+    const timer = setTimeout(() => setConfirming(false), 4000)
+    return () => clearTimeout(timer)
+  }, [confirming])
+  const savePin = async () => {
+    if (await run(actions.updateSpace(space.id, { pin }))) setPin('')
+  }
+  return h(Fragment, null,
+    h(SetRow, {
+      label: h(InlineText, { label: t('Space name'), value: space.name, required: true, maxLength: 40, onSave: name => run(actions.updateSpace(space.id, { name })) }),
+      hint: confirming ? t('Click again to delete. Its members go back to Ungrouped.') : t('{count} listed', { count }),
+    },
+      h('div', { className: 'bt-swatches' },
+        h('button', { type: 'button', className: 'bt-swatch bt-swatch-default', title: t('No color'), 'aria-label': t('No color'), 'aria-pressed': space.color === undefined, onClick: () => run(actions.updateSpace(space.id, { color: null })) }),
+        ACCENT_INKS.map(ink => h('button', {
+          key: ink, type: 'button', className: 'bt-swatch', title: t(capitalize(ink)), 'aria-label': t(capitalize(ink)), 'aria-pressed': space.color === ink,
+          style: { background: INKS[ink][0] }, onClick: () => run(actions.updateSpace(space.id, { color: ink })),
+        }))),
+      h('button', { type: 'button', className: confirming ? 'bt-soft bt-soft-sm bt-danger' : 'bt-soft bt-soft-sm', 'data-confirm': confirming || undefined, onClick: () => { if (confirming) void run(actions.deleteSpace(space.id)); else setConfirming(true) } }, t('Delete'))),
+    // Soft lock: the PIN gates the sidebar section on each browser, nothing more.
+    h(SetRow, { label: t('PIN'), hint: space.locked ? t('The sidebar asks for it before opening the section.') : t('Not set') },
+      h('input', { type: 'password', className: 'bt-bs-input', autoComplete: 'new-password', value: pin, maxLength: 64, placeholder: t('4–64 characters'), 'aria-label': t('Space PIN'), onChange: event => setPin(event.target.value), onKeyDown: event => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) void savePin() } }),
+      h('button', { type: 'button', className: 'bt-soft bt-soft-sm', disabled: pin.length < 4, onClick: () => void savePin() }, t('Set')),
+      space.locked ? h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: () => run(actions.updateSpace(space.id, { pin: null })) }, t('Clear')) : null))
+}
+
+function SpacesSection({ roster, actions, run }) {
+  const spaces = roster.spaces ?? []
+  const [name, setName] = useState('')
+  const members = id => roster.bots.filter(bot => bot.space === id).length + roster.rooms.filter(room => room.space === id).length
+  const create = async () => {
+    const text = name.trim()
+    if (text === '' || await run(actions.createSpace({ name: text })) !== true) return
+    setName('')
+  }
+  return h(SetSection, { title: t('Spaces · {count}', { count: spaces.length }) },
+    spaces.map(space => h(SpaceRow, { key: space.id, space, count: members(space.id), actions, run })),
+    h(SetRow, { label: t('New space'), hint: t('Groups Bots and group chats in the sidebar.') },
+      h('input', { className: 'bt-bs-input', value: name, maxLength: 40, placeholder: t('Space name'), 'aria-label': t('Space name'), onChange: event => setName(event.target.value), onKeyDown: event => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) void create() } }),
+      h('button', { type: 'button', className: 'bt-soft bt-soft-sm', disabled: name.trim() === '', onClick: () => void create() }, t('Create'))))
+}
+
 const MOTIONS = [['quiet', 'Quiet'], ['normal', 'Normal'], ['lively', 'Lively']]
 function MotionSection({ roster, actions, run }) {
   const motion = roster.prefs?.motion === 'quiet' || roster.prefs?.motion === 'lively' ? roster.prefs.motion : 'normal'
@@ -198,6 +292,7 @@ function BotsPage({ roster, actions, run }) {
   const [creating, setCreating] = useState(false)
   return [
     h(MainBotsSection, { key: 'main', roster, actions, run }),
+    h(SpacesSection, { key: 'spaces', roster, actions, run }),
     h(MotionSection, { key: 'motion', roster, actions, run }),
     creating
       ? h(CreateBot, { key: 'create', roster, actions, inline: true, onBack: () => setCreating(false), onCreated: bot => actions.openSettings('bots', bot.id) })
@@ -280,9 +375,9 @@ export function SettingsDialog({ page, id, roster, actions, useUpdate, leaving =
         pages.map(([key, text]) => h('button', {
           key, type: 'button', className: 'bt-settings-item', 'aria-current': shown === key ? 'page' : undefined, onClick: () => actions.openSettings(key),
         }, h(PAGE_ICONS[key]), t(text))),
-        actions.openHarnessSettings ? h('button', {
+        actions.openHarnessSettings || canEditProviders() ? h('button', {
           type: 'button', className: 'bt-settings-item bt-settings-shell', title: t('Models, providers, and the rest of DeepSeek Harness'),
-          onClick: () => { close(); actions.openHarnessSettings() },
+          onClick: () => { close(); (actions.openHarnessSettings ?? openHarnessSettings)() },
         }, h(SlidersIcon), t('Harness settings')) : null),
       h('div', { className: 'bt-settings-main' },
         h('div', { className: 'bt-settings-head' },

@@ -24,7 +24,7 @@ function start(state, { config = {}, services } = {}) {
   }
   const stop = async () => {
     await ctx.dispose()
-    rmSync(home, { recursive: true, force: true, maxRetries: 5 })
+    try { rmSync(home, { recursive: true, force: true, maxRetries: 5 }) } catch { /* a late home write keeps the dir */ }
   }
   return { ctx, call, stop, rt }
 }
@@ -86,10 +86,15 @@ test('apply registers listeners and effects in a fixed order', (t) => {
     'on llm/stream',
     'effect ds-bot: load secrets',
     'effect ds-bot: connectors',
+    'effect ds-bot: zalo',
+    'effect ds-bot: telegram',
+    'effect ds-bot: wake',
     'on agent/created',
     'effect ds-bot: capabilities',
     'on agent/status',
     'effect ds-bot: learning',
+    'effect ds-bot: gemlogin sessions',
+    'effect ds-bot: chromium sessions',
     'effect ds-bot: usage ledger',
     'on llm/stream',
     'effect ds-bot: update check',
@@ -101,9 +106,25 @@ test('apply registers listeners and effects in a fixed order', (t) => {
     'route GET /api/bot/feed',
     'effect ds-bot: live feed',
     'effect ds-bot: api route',
+    'route GET /api/bot/file',
     'route POST /api/bot',
     'effect ds-bot: load state',
   ])
+})
+
+// The connector tools are Bot-session tools like the rest of the team: they
+// live in rt.teamTools for the per-session scope, never on the global layer a
+// plain session reads.
+test('apply scopes the connector tools instead of registering them globally', (t) => {
+  const { ctx, rt, stop } = start()
+  t.after(stop)
+  for (const name of ['zalo_threads', 'zalo_read', 'zalo_send', 'telegram_send',
+    'gemlogin_profiles', 'gemlogin_open', 'gemlogin_close', 'gemlogin_browse',
+    'chromium_open', 'chromium_close', 'chromium_browse']) {
+    assert.ok(rt.teamTools.some(tool => tool.name === name), name)
+    assert.ok(!ctx.registeredTools.has(name), name)
+  }
+  assert.ok(ctx.calls.every(entry => !entry.startsWith('tool ')))
 })
 
 test('the client channel answers from the saved state', async (t) => {

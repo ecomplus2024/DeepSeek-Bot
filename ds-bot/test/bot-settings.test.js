@@ -14,6 +14,13 @@ const react = {
   useState: initial => [typeof initial === 'function' ? initial() : initial, () => {}],
   useEffect() {}, useLayoutEffect() {}, useMemo: make => make(), useCallback: fn => fn,
   useRef: current => ({ current }), useId: () => 'id', Fragment: Symbol('Fragment'),
+  createContext: (initial) => {
+    const ctx = { value: initial }
+    ctx.Provider = ({ value, children }) => { ctx.value = value; return children }
+    return ctx
+  },
+  useContext: ctx => ctx.value,
+  useSyncExternalStore: (subscribe, getSnapshot) => getSnapshot(),
 }
 const module = { exports: {} }
 runInNewContext(outputFiles[0].text, {

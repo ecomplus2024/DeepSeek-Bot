@@ -73,7 +73,7 @@ function start({ home = mkdtempSync(join(tmpdir(), 'ds-bot-rounds-')) } = {}) {
     route = options
     return register(options)
   }
-  rt = createRuntime(ctx, { home })
+  rt = createRuntime(ctx, { home, wake: false })
   const call = async (endpoint, payload) => {
     const response = await route.fetch(new Request('http://localhost/api/bot', { method: 'POST', body: JSON.stringify({ endpoint, payload }) }))
     return response.json()
@@ -593,6 +593,44 @@ test('a file the user sends in a group reaches each member the line is shown to,
   const after = await turnFor(sent, next)
   await answer(after.sessionId, after.message.source.exchangeId, 'OK.', 4)
   await running
+})
+
+// A picture is read before the round starts, which used to hold the user's own line back
+// until the vision model answered; the group showed nothing meanwhile.
+test('a picture the user posts shows in the group at once, and its reading joins that line', async (t) => {
+  const { call, emit, relay, answer, stop, sent, ctx, rt } = start()
+  t.after(stop)
+  const room = await team(call, sent)
+  // The admin runs on a vision model, and that model answers only when the test lets it,
+  // so the line can be seen before its picture is read.
+  const vision = [{ id: 'deepseek-v4-flash', inputModalities: ['text', 'image'] }]
+  ctx.llm.listModels = async () => vision
+  ctx.llm.resolveModelInfo = async () => ({ inputModalities: ['text', 'image'] })
+  await call('update-bot', { id: room.admin, model: 'deepseek/deepseek-v4-flash' })
+  let releaseReading
+  const reading = new Promise((resolve) => { releaseReading = resolve })
+  ctx.llm.stream = async function* () {
+    await reading
+    yield { type: 'text-delta', index: 0, text: 'A black inkjet printer.' }
+    yield { type: 'finish', reason: { kind: 'stop' } }
+  }
+  const picture = { attachmentId: 'sha256:aa11bb22cc', name: 'printer.jpg', mediaType: 'image/jpeg', bytes: 2048 }
+  await emit(room.id, { type: 'user/message', data: { source: { kind: 'user' }, content: [{ type: 'image', attachment: picture }] } })
+  const running = relay(room.id, 'r1')
+  const posted = () => rt.state.rooms[room.id]?.log?.find(entry => entry.who === 'User')
+  const pending = await waitFor(() => (posted()?.text.includes('being read') ? posted() : undefined))
+  assert.ok(pending, 'the line shows before its picture is read')
+  releaseReading()
+  const first = await turnFor(sent)
+  assert.match(posted().text, /\[Image "printer\.jpg", read by deepseek-v4-flash:\]\nA black inkjet printer\./)
+  assert.equal(posted().seq, pending.seq, 'the reading joins the line the user already sees')
+  assert.match(first.message.content[0].text, /A black inkjet printer\./)
+  await answer(first.sessionId, first.message.source.exchangeId, 'A printer.', 1)
+  const second = await turnFor(sent, first)
+  assert.match(second.message.content[0].text, /A black inkjet printer\./)
+  await answer(second.sessionId, second.message.source.exchangeId, 'Same here.', 2)
+  await running
+  assert.equal(rt.roomOf(room.id).log.filter(entry => entry.who === 'User').length, 1)
 })
 
 // #206: a Bot's post past 20,000 characters goes as a file; the line keeps the file and

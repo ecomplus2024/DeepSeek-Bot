@@ -95,7 +95,7 @@ async function start(seed) {
     route = options
     return register(options)
   }
-  rt = createRuntime(ctx, { home })
+  rt = createRuntime(ctx, { home, wake: false })
   let seq = 0
   const emit = (id, type, data, extra) => {
     if (type === 'user/message') agentOf(id).session.deriveMessages().push({ role: 'user', content: data.content, source: data.source })
@@ -628,6 +628,29 @@ test('a Bot may take part in the same work again, but not message one that waits
   assert.match(await tool('message_bot', { to: 'Chief', message: 'done' }, 'c'), refused)
 })
 
+test('work handed on again and again wakes the Bot that asked with a team note', async (t) => {
+  const team = await start(threeBots())
+  t.after(team.stop)
+  const { agents, tool } = team
+  const { take, end } = await handedOn(team)
+  const notes = () => callsOf(agents, 'a').filter(([, message]) => message.source?.role === 'note')
+  // Writer hands on to Tester twelve times under Chief's work; Tester answers each time.
+  for (let round = 2; round <= 12; round += 1) {
+    end('b', `sent round ${round - 1}`)
+    take('c')
+    end('c', `back ${round - 1}`)
+    await settled(() => callsOf(agents, 'b').length === round)
+    take('b')
+    await tool('message_bot', { to: 'Tester', message: `round ${round}` }, 'b')
+  }
+  await settled(() => notes().length === 2)
+  const first = textOf(notes()[0][1].content)
+  assert.match(first, /^\[Team note\]\nThe work you handed to Writer has passed through 6 messages between Bots and has not come back\. You asked: "carry out the plan"\./)
+  assert.match(textOf(notes()[1][1].content), /passed through 12 messages/)
+  // The note is no exchange: nothing is recorded and Writer is never blocked from asking.
+  assert.deepEqual(notes().map(([, message]) => message.source.senderSessionId), [undefined, undefined])
+})
+
 test('a stopped turn answers at once, and what it handed on comes back to it alone', async (t) => {
   const team = await start(threeBots())
   t.after(team.stop)
@@ -869,7 +892,7 @@ test('one turn keeps its identity across two earlier pages', async (t) => {
   let route
   const register = ctx.connection.fetch.register
   ctx.connection.fetch.register = (options) => { route = options; return register(options) }
-  rt = createRuntime(ctx, { home })
+  rt = createRuntime(ctx, { home, wake: false })
   t.after(async () => {
     await ctx.dispose()
     rmSync(home, { recursive: true, force: true, maxRetries: 5 })

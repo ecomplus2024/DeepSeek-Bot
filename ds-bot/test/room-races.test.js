@@ -60,7 +60,7 @@ async function start(team = TEAM) {
     sessionTitle: { rename: async () => {} },
     sessions: { flush: async () => {} },
   })
-  const rt = createRuntime(ctx, { home })
+  const rt = createRuntime(ctx, { home, wake: false })
   await rt.load()
   const held = () => {
     let release

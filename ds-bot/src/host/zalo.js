@@ -1,0 +1,870 @@
+// Zalo: Bots bound to a personal Zalo account follow chosen threads and talk
+// with the user there. Login is by QR code; the {cookie, imei, userAgent} session
+// lives as one secret, so it reaches no model request and no Bot's shell.
+//
+// Several Bots may share one account: the credentials and the listener sit on
+// the account's uid, each thread is configured on one Bot only, and an inbound
+// message goes to that Bot. Each thread has a mode: `talk` relays the turn's
+// reply back to Zalo through a roomWaiters waiter (the same mechanism a group
+// uses to wait for a member), `watch` only buffers messages and wakes the Bot
+// on a @mention or keyword — what it says there goes out through zalo_send,
+// never automatically.
+import { randomUUID } from 'node:crypto'
+import { defineTool } from '@deepseek-ai/dsh-tools'
+import { ROOM_REPLY_TIMEOUT_MS, ZALO_BUFFER_MAX, ZALO_FETCH_MAX, ZALO_HISTORY_MAX, ZALO_MODES, ZALO_QUOTE_CHARS, ZALO_READ_MAX, ZALO_READ_PAGE, ZALO_SEND_GAP_MS, ZALO_SEND_MAX, ZALO_SEND_WINDOW_MS, ZALO_SYNC_TIMEOUT_MS, ZALO_WAKE_COOLDOWN_MS, ZALO_WAKE_LINES } from './constants.js'
+import { headOf } from './text.js'
+import { output } from './tools.js'
+
+const QR_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36'
+// A message's content is a string only when it is plain text; other kinds land
+// as objects with a msgType name.
+const PLACEHOLDER = { sticker: '[sticker]', photo: '[image]', 'video.msg': '[video]', voice: '[voice]', file: '[file]', link: '[link]', share: '[shared]' }
+const contentOf = message => {
+  const content = message?.data?.content
+  if (typeof content === 'string') return content.trim()
+  const type = String(message?.data?.msgType ?? '')
+  return PLACEHOLDER[Object.keys(PLACEHOLDER).find(kind => type.endsWith(kind))] ?? '[message]'
+}
+
+// The photo's caption, when Zalo sends one, joins the text so the Bot sees it.
+const captionOf = message => {
+  const content = message?.data?.content
+  if (typeof content !== 'object' || content === null) return undefined
+  if (!String(message?.data?.msgType ?? '').endsWith('photo')) return undefined
+  const caption = String(content.title ?? '').trim()
+  return caption === '' ? undefined : caption
+}
+
+// The secret lives under the account's uid so every Bot bound to it shares one
+// login; ZALO_SESSION_<botId> names from the per-Bot layout are still read and
+// moved over on the next connect.
+const secretName = text => `ZALO_${String(text).toUpperCase().replace(/[^A-Z0-9]/g, '_').slice(0, 40)}`
+export const zaloAccountSecret = uid => secretName(`ACCOUNT_${uid}`)
+export const zaloSecretName = botId => secretName(`SESSION_${botId}`)
+
+export function install(rt) {
+  const { ctx, state } = rt
+  const enabled = rt.config.zalo !== false
+
+  /** @type {Map<string, {api?:any, types?:any, state:string, error?:string, saved?:string}>} keyed by account uid */
+  const sessions = new Map()
+  const sendQueues = new Map()
+  const sentAt = new Map()
+  const lastWake = new Map()
+  // Waiters for an 'old_messages' event, keyed `${uid}:${user|group}`: one sync
+  // answer can carry every thread of a kind, so all its waiters resolve at once.
+  const syncWaits = new Map()
+  // At most one QR login at a time: its QR image and progress feed the panel.
+  let pending = null
+  let stopped = false
+
+  const loadLib = async () => {
+    const custom = rt.config.zalo?.import
+    const mod = typeof custom === 'function' ? await custom() : await import(custom ?? 'zca-js')
+    return mod?.default?.Zalo !== undefined ? mod.default : mod
+  }
+  const reason = error => rt.redactSecrets(String(error?.message ?? error)).slice(0, 300)
+
+  // A photo message carries its image URL in content.href (thumb is the low-res
+  // one). Downloads are bounded and failures just leave the [image] placeholder —
+  // Zalo links expire and some need session headers.
+  const IMAGE_MAX_BYTES = 15 * 1024 * 1024
+  const photoUrl = (message) => {
+    const content = message?.data?.content
+    if (typeof content !== 'object' || content === null) return undefined
+    if (!String(message?.data?.msgType ?? '').endsWith('photo')) return undefined
+    const url = String(content.href ?? content.thumb ?? '')
+    return /^https?:\/\//i.test(url) ? url : undefined
+  }
+  async function downloadImage(url, label) {
+    const attachments = ctx.get?.('attachments')
+    if (attachments === undefined) return undefined
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(15_000) })
+      if (!response.ok) return undefined
+      if (Number(response.headers.get('content-length') ?? 0) > IMAGE_MAX_BYTES) return undefined
+      const data = new Uint8Array(await response.arrayBuffer())
+      if (data.byteLength === 0 || data.byteLength > IMAGE_MAX_BYTES) return undefined
+      // Zalo's content-type is not reliable, so the declared type comes from the
+      // bytes themselves; anything unrecognized (an error page, an encrypted
+      // blob) falls back to the [image] placeholder.
+      const mediaType = data[0] === 0xFF && data[1] === 0xD8 ? 'image/jpeg'
+        : data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4E && data[3] === 0x47 ? 'image/png'
+        : data[0] === 0x47 && data[1] === 0x49 && data[2] === 0x46 ? 'image/gif'
+        : data[0] === 0x52 && data[1] === 0x49 && data[2] === 0x46 && data[3] === 0x46 && data[8] === 0x57 && data[9] === 0x45 && data[10] === 0x42 && data[11] === 0x50 ? 'image/webp'
+        : undefined
+      if (mediaType === undefined) {
+        rt.warn('ds-bot: zalo photo %s is not a known image format', label)
+        return undefined
+      }
+      return await attachments.saveImage({ data, mediaType, name: `zalo-photo.${mediaType.slice('image/'.length)}` })
+    } catch (error) {
+      rt.warn('ds-bot: zalo photo %s not attached: %s', label, reason(error))
+      return undefined
+    }
+  }
+  const imageAttachment = message => {
+    const url = photoUrl(message)
+    return url === undefined ? Promise.resolve(undefined) : downloadImage(url, message?.data?.msgId ?? '?')
+  }
+
+  // One shape for a stored line, live or fetched: `id` dedupes a message a sync
+  // returns after the listener already buffered it (msgId, else uid+cliMsgId).
+  const keyOf = (message) => {
+    const data = message?.data
+    const msgId = String(data?.msgId ?? '')
+    if (msgId !== '') return msgId
+    const cli = String(data?.cliMsgId ?? '')
+    return cli === '' ? '' : `${data?.uidFrom}:${cli}`
+  }
+  // A reply carries the message it answers as data.quote: who wrote it and its
+  // text, so a bare "ok" still lands in context. The account's own quoted
+  // sender shows as 'you' like an outbound line.
+  const quoteOf = (message, selfUid) => {
+    const quote = message?.data?.quote
+    if (typeof quote !== 'object' || quote === null) return undefined
+    const owner = String(quote.ownerId ?? '')
+    const from = selfUid !== undefined && owner === String(selfUid) ? 'you' : String(quote.fromD ?? '').trim() || owner || 'someone'
+    const text = String(quote.msg ?? '').trim()
+    return { from, text: text === '' ? '[message]' : headOf(text, ZALO_QUOTE_CHARS) }
+  }
+  const entryOf = (message, selfUid) => {
+    const key = keyOf(message)
+    const quote = quoteOf(message, selfUid)
+    return {
+      from: message?.isSelf === true ? 'you' : String(message?.data?.dName ?? '').trim() || String(message?.data?.uidFrom ?? 'someone'),
+      text: captionOf(message) ?? contentOf(message),
+      ts: Number(message?.data?.ts) || Date.now(),
+      ...(quote !== undefined ? { quote } : {}),
+      // The photo URL is kept so a later wake or zalo_read can still pull the
+      // image while the link lives; Zalo expires them.
+      ...(photoUrl(message) !== undefined ? { img: photoUrl(message) } : {}),
+      ...(key !== '' ? { id: key } : {}),
+    }
+  }
+  const lineText = line => (line.quote === undefined ? line.text : `[re ${line.quote.from}: ${line.quote.text}] ${line.text}`)
+
+  // Fetched lines land in thread.history (deduped, oldest first, capped) rather
+  // than the live buffer: they are old, not unread.
+  const rememberOld = (thread, messages, selfUid) => {
+    const seen = new Set()
+    for (const line of [...(thread.history ?? []), ...(thread.buffer ?? [])]) if (line.id !== undefined && line.id !== '') seen.add(line.id)
+    const fresh = []
+    for (const message of messages) {
+      if (message?.data === undefined) continue
+      const entry = entryOf(message, selfUid)
+      if (entry.id !== undefined) {
+        if (seen.has(entry.id)) continue
+        seen.add(entry.id)
+      }
+      fresh.push(entry)
+    }
+    if (fresh.length === 0) return 0
+    thread.history = [...(thread.history ?? []), ...fresh].sort((a, b) => a.ts - b.ts).slice(-ZALO_HISTORY_MAX)
+    return fresh.length
+  }
+
+  // What zalo_read pages through: fetched history first, then the live buffer,
+  // with a synced copy of a live line dropped on the boundary.
+  const mergedOf = (thread) => {
+    const live = new Set((thread.buffer ?? []).map(line => line.id).filter(id => id !== undefined && id !== ''))
+    return [...(thread.history ?? []).filter(line => line.id === undefined || line.id === '' || !live.has(line.id)), ...(thread.buffer ?? [])]
+      .sort((a, b) => a.ts - b.ts)
+  }
+
+  async function onOldMessages(uid, messages) {
+    await rt.load()
+    const byThread = new Map()
+    for (const message of messages) {
+      const threadId = String(message?.threadId ?? '')
+      const botId = threadId === '' ? undefined : threadOwner(uid, threadId)
+      if (botId === undefined) continue
+      if (!byThread.has(threadId)) byThread.set(threadId, { thread: teamOf(botId)?.threads?.[threadId], list: [] })
+      byThread.get(threadId).list.push(message)
+    }
+    let touched = false
+    for (const { thread, list } of byThread.values()) if (thread !== undefined) touched = rememberOld(thread, list, uid) > 0 || touched
+    if (touched) await rt.save().catch(() => {})
+  }
+
+  const awaitSync = (uid, kind) => new Promise((resolve) => {
+    const key = `${uid}:${kind}`
+    const finish = (got) => {
+      const list = (syncWaits.get(key) ?? []).filter(item => item !== finish)
+      if (list.length === 0) syncWaits.delete(key); else syncWaits.set(key, list)
+      clearTimeout(timer)
+      resolve(got)
+    }
+    const timer = setTimeout(() => finish(false), ZALO_SYNC_TIMEOUT_MS)
+    syncWaits.set(key, [...(syncWaits.get(key) ?? []), finish])
+  })
+
+  // Pulls older lines into thread.history when a zalo_read pages past what is
+  // stored. A group answers getGroupChatHistory with its newest `count`; a user
+  // thread only syncs over the socket. Zalo keeps roughly the last two weeks of
+  // a session, so truly old messages are simply not there.
+  const fetchOlder = async (botId, threadId, thread, want) => {
+    const uid = teamOf(botId)?.account?.uid
+    const session = uid === undefined ? undefined : sessions.get(uid)
+    if (session?.api === undefined) return false
+    const kind = thread.kind === 'group' ? 'group' : 'user'
+    let reached = false
+    if (kind === 'group' && typeof session.api.getGroupChatHistory === 'function') {
+      const result = await session.api.getGroupChatHistory(threadId, Math.min(want, ZALO_FETCH_MAX)).catch(() => undefined)
+      if (result !== undefined) {
+        reached = true
+        rememberOld(thread, result.groupMsgs ?? [], uid)
+        thread.historyMore = (result.more ?? 0) !== 0
+        void rt.save().catch(() => {})
+      }
+    }
+    const listener = session.api.listener
+    if (mergedOf(thread).length < want && typeof listener?.requestOldMessages === 'function') {
+      const had = (thread.history ?? []).length
+      const waiting = awaitSync(uid, kind)
+      try { listener.requestOldMessages(kind === 'group' ? session.types.group : session.types.user, (thread.history ?? [])[0]?.id ?? (thread.buffer ?? [])[0]?.id ?? null) } catch {}
+      if (await waiting) {
+        reached = true
+        if ((thread.history ?? []).length > had) {
+          thread.historyMore = true
+          void rt.save().catch(() => {})
+        }
+      }
+    }
+    return reached
+  }
+
+  const teamOf = botId => state.zalo?.[botId]
+  const bound = (botId) => { const team = teamOf(botId); return team?.account ? team : undefined }
+  // Bots on one account: the account is theirs while their record names its uid.
+  const botsOf = uid => Object.keys(state.zalo ?? {}).filter(id => state.zalo[id]?.account?.uid === uid)
+  // The Bot a thread belongs to: bound to its account and following it (not `off`).
+  // zalo-thread-mode keeps at most one owner; a stale double entry delivers to
+  // the first bound Bot.
+  const threadOwner = (uid, threadId) => botsOf(uid).find((botId) => {
+    const thread = teamOf(botId)?.threads?.[threadId]
+    return thread !== undefined && ZALO_MODES.includes(thread.mode) && thread.mode !== 'off'
+  })
+  // The saved login for an account: the shared name first, then a per-Bot secret
+  // left by an older version (moved over on connect).
+  const credentialsFor = (uid) => {
+    const name = zaloAccountSecret(uid)
+    const shared = rt.secretValue(name)
+    if (shared !== undefined) return { name, value: shared }
+    for (const botId of botsOf(uid)) {
+      const legacy = zaloSecretName(botId)
+      const value = rt.secretValue(legacy)
+      if (value !== undefined) return { name: legacy, value }
+    }
+    return undefined
+  }
+
+  // Sends are serialized per account: at least ZALO_SEND_GAP_MS apart and at most
+  // ZALO_SEND_MAX per window, so a personal account does not trip Zalo's spam
+  // watch — one budget covers every Bot on it.
+  function zaloSend(botId, threadId, text) {
+    const uid = teamOf(botId)?.account?.uid
+    const session = uid === undefined ? undefined : sessions.get(uid)
+    if (session?.api === undefined) return Promise.reject(new Error('Zalo is not connected'))
+    const thread = teamOf(botId)?.threads?.[threadId]
+    const run = (sendQueues.get(uid) ?? Promise.resolve()).then(async () => {
+      const now = Date.now()
+      const log = (sentAt.get(uid) ?? []).filter(ts => now - ts < ZALO_SEND_WINDOW_MS)
+      if (log.length >= ZALO_SEND_MAX) throw new Error(`Zalo limits this account to ${ZALO_SEND_MAX} messages per 10 minutes; wait a few minutes`)
+      const wait = (log.at(-1) ?? 0) + ZALO_SEND_GAP_MS - now
+      if (wait > 0) await new Promise(done => setTimeout(done, wait))
+      await session.api.sendMessage({ msg: text }, threadId, thread?.kind === 'group' ? session.types.group : session.types.user)
+      log.push(Date.now())
+      sentAt.set(uid, log)
+    })
+    sendQueues.set(uid, run.catch(() => {}))
+    return run
+  }
+
+  const mentioned = (message, team, entry) => {
+    const uid = team.account?.uid
+    if (uid !== undefined && uid !== '' && (message?.data?.mentions ?? []).some(mark => String(mark?.uid ?? mark) === uid)) return true
+    const name = String(team.account?.name ?? '').trim().toLowerCase()
+    return name !== '' && entry.text.toLowerCase().includes(`@${name}`)
+  }
+  const wakes = (message, team, thread, entry) => {
+    // Replying to the Bot's own Zalo message addresses it, in a DM or a group.
+    const uid = String(team.account?.uid ?? '')
+    if (uid !== '' && String(message?.data?.quote?.ownerId ?? '') === uid) return 'replied to your message'
+    if (thread.kind === 'group' && mentioned(message, team, entry)) return 'you were mentioned'
+    const hit = (thread.keywords ?? []).find(word => word !== '' && entry.text.toLowerCase().includes(String(word).toLowerCase()))
+    return hit !== undefined ? `keyword "${hit}"` : null
+  }
+
+  // A `talk` turn owes the thread its reply. The waiter lives in roomWaiters, so
+  // turns.js resolves it with the turn's text (or its failure) exactly like a
+  // group round; the timeout matches the group's, refreshed by Session activity.
+  // The ask is also a piece of work the Bot owns (handoffs.js), whose record keeps
+  // the route back to the thread: what the Bot hands on for it inherits the route,
+  // so a result that comes back in a later turn — or after a restart — is sent too.
+  async function talkDeliver(botId, threadId, thread, entry, images) {
+    const exchangeId = randomUUID()
+    rt.openWork?.(exchangeId, { to: botId, zalo: { botId, threadId } })
+    const reply = await new Promise(resolve => {
+      let timer
+      const finish = (value) => { clearTimeout(timer); rt.roomWaiters.delete(exchangeId); resolve(value) }
+      const touch = () => { clearTimeout(timer); timer = setTimeout(() => finish(null), ROOM_REPLY_TIMEOUT_MS) }
+      touch()
+      rt.roomWaiters.set(exchangeId, {
+        sessionId: rt.chatOf(botId),
+        botId,
+        resolve: finish,
+        fail: failure => finish({ failure }),
+        touch,
+        work: () => {},
+        say: () => {},
+        approval: () => {},
+      })
+      rt.deliver({
+        toId: botId,
+        role: 'zalo',
+        sender: entry.from,
+        exchangeId,
+        note: `${thread.kind === 'group' ? `group "${thread.name ?? threadId}"` : 'direct message'} from ${entry.from} · your reply is sent back to Zalo`,
+        text: lineText(entry),
+        ...(images !== undefined ? { images } : {}),
+      }).catch((error) => {
+        rt.dropWork?.(exchangeId)
+        finish({ failure: { code: 'DELIVERY', message: String(error?.message ?? error).slice(0, 200) } })
+      })
+    })
+    if (typeof reply === 'string' && reply.trim() !== '') {
+      void zaloSend(botId, threadId, reply.trim()).catch(error => rt.warn('ds-bot: zalo reply to %s not sent: %s', threadId, error))
+    } else if (reply?.failure !== undefined) {
+      void zaloSend(botId, threadId, `Sorry, I could not answer (${reply.failure.code ?? 'error'}).`)
+        .catch(error => rt.warn('ds-bot: zalo failure notice to %s not sent: %s', threadId, error))
+    } else {
+      rt.warn('ds-bot: zalo talk turn for %s ended with no reply to send', threadId)
+    }
+  }
+
+  // An answer a Zalo ask is owed, sent straight to its thread — for results that
+  // came back in a later turn (turns.js routes them here through the work's
+  // `zalo` tag) and for turns whose waiter is already gone.
+  async function zaloReply(route, text) {
+    const thread = route?.botId === undefined ? undefined : teamOf(route.botId)?.threads?.[route.threadId]
+    const clean = String(text ?? '').trim()
+    if (thread?.mode === undefined || thread.mode === 'off' || clean === '') return
+    await zaloSend(route.botId, route.threadId, clean)
+      .catch(error => rt.warn('ds-bot: zalo reply to %s not sent: %s', route.threadId, error))
+  }
+
+  // The turn that answered a Zalo ask ended with no waiter left to take it — it
+  // timed out, or a restart dropped it. The ask's work record still names the
+  // thread, so the reply (or its failure) goes there; a watch wake has no such
+  // record and stays silent, as it should.
+  const zaloTurnReply = (info, { reply, failure } = {}) => {
+    const route = state.works?.[info?.exchangeId]?.zalo
+    if (route === undefined) return
+    void zaloReply(route, failure !== undefined ? `Sorry, I could not answer (${failure.code ?? 'error'}).` : reply)
+  }
+
+  // A `watch` wake informs the Bot; nothing it writes in that turn is relayed.
+  // `trigger` is the buffered line that called — it is marked so the Bot
+  // answers that one, not the chatter around it.
+  async function wakeWatch(botId, threadId, thread, why, images, trigger) {
+    const text = (thread.buffer ?? []).slice(-ZALO_WAKE_LINES)
+      .map(line => `${line.from}: ${lineText(line)}${line === trigger ? '  ⟵ the message that called you' : ''}`).join('\n')
+    if (text === '') return
+    // Photo links still living in the buffer are pulled again so the wake shows
+    // the Bot what it was pinged about; expired links just drop out.
+    const buffered = (await Promise.all((thread.buffer ?? []).filter(line => typeof line.img === 'string').slice(-4)
+      .map(line => downloadImage(line.img, `wake:${threadId}`)))).filter(file => file !== undefined)
+    images = [...(images ?? []), ...buffered]
+    if (images.length === 0) images = undefined
+    await rt.deliver({
+      toId: botId,
+      role: 'zalo',
+      sender: `Zalo "${thread.name ?? threadId}"`,
+      exchangeId: randomUUID(),
+      note: `watch ${thread.kind === 'group' ? 'group' : 'chat'} "${thread.name ?? threadId}" · ${why} — the marked line is the only one that needs you; staying silent is fine · speak there only with zalo_send; your reply here is not relayed`,
+      text,
+      ...(images !== undefined ? { images } : {}),
+    }).catch(error => rt.warn('ds-bot: zalo watch delivery failed: %s', error))
+  }
+
+  async function onMessage(uid, message) {
+    if (message?.isSelf === true) return
+    const threadId = String(message?.threadId ?? '')
+    if (threadId === '') return
+    if (String(message.data?.uidFrom ?? '') === String(uid)) return
+    await rt.load()
+    const botId = threadOwner(uid, threadId)
+    if (botId === undefined) return
+    const team = teamOf(botId)
+    const thread = team.threads[threadId]
+    const entry = entryOf(message, uid)
+    thread.buffer = [...(thread.buffer ?? []), entry].slice(-ZALO_BUFFER_MAX)
+    void rt.save().catch(() => {})
+    if (thread.mode === 'talk') {
+      const images = await imageAttachment(message).then(file => file === undefined ? undefined : [file])
+      rt.warn('ds-bot: zalo talk message in %s from %s; delivering to %s', threadId, entry.from, botId)
+      return talkDeliver(botId, threadId, thread, entry, images)
+    }
+    const why = wakes(message, team, thread, entry)
+    // Mentions inside the cooldown stay in the buffer — the next wake or a
+    // zalo_read still sees them, but the thread cannot nudge the Bot twice.
+    if (why !== null && Date.now() - (lastWake.get(`${botId}:${threadId}`) ?? 0) >= ZALO_WAKE_COOLDOWN_MS) {
+      lastWake.set(`${botId}:${threadId}`, Date.now())
+      const images = await imageAttachment(message).then(file => file === undefined ? undefined : [file])
+      await wakeWatch(botId, threadId, thread, why, images, entry)
+    }
+  }
+
+  function attachSession(uid, api, lib, saved) {
+    const types = lib?.ThreadType ?? {}
+    const entry = { api, state: 'ready', saved, types: { user: types.User ?? types.user ?? 0, group: types.Group ?? types.group ?? 1 } }
+    sessions.set(uid, entry)
+    const listener = api.listener
+    listener.onConnected?.(() => { if (sessions.get(uid) === entry) entry.state = 'ready' })
+    listener.onClosed?.(() => {
+      if (sessions.get(uid) !== entry) return
+      entry.state = 'off'
+      // zca-js never reopens a closed socket; a dropped session retries a few
+      // times, back off a little each round, then gives up for a manual Reconnect.
+      entry.retries = (entry.retries ?? 0) + 1
+      if (entry.retries > 5) return
+      setTimeout(() => {
+        if (stopped || sessions.get(uid) !== entry) return
+        if (credentialsFor(uid)?.value !== entry.saved) return
+        void connect(uid).catch(error => rt.warn('ds-bot: zalo reconnect for %s failed: %s', uid, error))
+      }, 15_000 * entry.retries)
+    })
+    listener.onError?.((error) => { if (sessions.get(uid) === entry) { entry.state = 'error'; entry.error = reason(error) } })
+    listener.onMessage?.((message) => { void onMessage(uid, message).catch(error => rt.warn('ds-bot: zalo message failed: %s', error)) })
+    // A requestOldMessages answer arrives here; pending reads resolve after the
+    // merge, so they see the lines it brought.
+    listener.on?.('old_messages', (messages, type) => {
+      const key = `${uid}:${type === entry.types.group ? 'group' : 'user'}`
+      void onOldMessages(uid, messages ?? [])
+        .catch(error => rt.warn('ds-bot: zalo history sync failed: %s', error))
+        .finally(() => { for (const done of syncWaits.get(key) ?? []) done(true) })
+    })
+    try { listener.start() } catch (error) { entry.state = 'error'; entry.error = reason(error) }
+    return entry
+  }
+
+  const detach = (uid) => {
+    try { sessions.get(uid)?.api?.listener?.stop?.() } catch {}
+    sessions.delete(uid)
+    for (const [key, waits] of syncWaits) if (key.startsWith(`${uid}:`)) for (const done of waits) done(false)
+  }
+
+  // Login from the saved secret; `saved` guards against double connects on a
+  // secretsChanged pass, and against an edit racing a connect in flight.
+  async function connect(uid) {
+    const creds = credentialsFor(uid)
+    if (creds === undefined || botsOf(uid).length === 0) { detach(uid); return }
+    const old = sessions.get(uid)
+    // Only a live session counts as already connected: 'off' and 'error' reconnect.
+    if (old !== undefined && old.saved === creds.value && (old.state === 'ready' || old.state === 'connecting')) return
+    detach(uid)
+    const entry = { state: 'connecting', saved: creds.value }
+    sessions.set(uid, entry)
+    let credentials
+    try { credentials = JSON.parse(creds.value) } catch {
+      entry.state = 'error'
+      entry.error = 'The saved Zalo session cannot be read; log in again'
+      return
+    }
+    try {
+      const lib = await loadLib()
+      const api = await new lib.Zalo({ logging: false, selfListen: false }).login(credentials)
+      // A logout or a newer connect while this one was in flight makes it stale.
+      if (stopped || sessions.get(uid) !== entry || credentialsFor(uid)?.value !== creds.value || botsOf(uid).length === 0) {
+        try { api.listener?.stop?.() } catch {}
+        return
+      }
+      attachSession(uid, api, lib, creds.value)
+      // A per-Bot secret left by an older version moves to the account's name.
+      if (creds.name !== zaloAccountSecret(uid)) {
+        void rt.secretEndpoint('secret-set', { name: zaloAccountSecret(uid), value: creds.value, purpose: 'Zalo session', scope: [] })
+          .then(() => Promise.all(botsOf(uid).map(botId => rt.secretEndpoint('secret-delete', { name: zaloSecretName(botId) }).catch(() => {}))))
+          .catch(error => rt.warn('ds-bot: zalo secret move failed: %s', error))
+      }
+    } catch (error) {
+      entry.state = 'error'
+      entry.error = reason(error)
+      rt.warn('ds-bot: zalo login for %s failed: %s', uid, entry.error)
+    }
+  }
+
+  async function sync() {
+    await rt.load().catch(() => {})
+    // A read-only host (another DSH holds the lock) must not hold the account:
+    // two listeners on one nick kick each other off.
+    if (rt.readOnly() !== undefined) { for (const uid of sessions.keys()) detach(uid); return }
+    await rt.loadSecrets().catch(() => {})
+    const uids = new Set(sessions.keys())
+    for (const team of Object.values(state.zalo ?? {})) if (team?.account?.uid !== undefined && team.account.uid !== '') uids.add(team.account.uid)
+    for (const uid of uids) {
+      if (stopped) return
+      await connect(uid).catch(error => rt.warn('ds-bot: zalo connect for %s failed: %s', uid, error))
+    }
+  }
+
+  const live = () => {
+    const accounts = new Map()
+    for (const [botId, team] of Object.entries(state.zalo ?? {})) {
+      if (team?.account == null) continue
+      const uid = team.account.uid
+      const entry = accounts.get(uid) ?? { uid, name: team.account.name, bots: [] }
+      entry.bots.push(botId)
+      accounts.set(uid, entry)
+    }
+    return {
+      bots: Object.fromEntries(Object.keys(state.zalo ?? {}).map((botId) => {
+        const team = teamOf(botId)
+        const session = team?.account?.uid !== undefined ? sessions.get(team.account.uid) : undefined
+        return [botId, {
+          state: session?.state ?? 'off',
+          ...(session?.error ? { error: session.error } : {}),
+          account: team?.account ?? null,
+          threads: Object.fromEntries(Object.entries(team?.threads ?? {}).map(([id, thread]) => [id, {
+            kind: thread.kind ?? 'user',
+            name: thread.name ?? id,
+            mode: thread.mode ?? 'off',
+            ...(Array.isArray(thread.keywords) && thread.keywords.length > 0 ? { keywords: thread.keywords } : {}),
+            buffered: (thread.buffer ?? []).length,
+          }])),
+        }]
+      })),
+      accounts: [...accounts.values()].map(entry => ({
+        ...entry,
+        state: sessions.get(entry.uid)?.state ?? 'off',
+        ...(sessions.get(entry.uid)?.error ? { error: sessions.get(entry.uid).error } : {}),
+      })),
+      login: pending === null ? null : {
+        botId: pending.botId,
+        phase: pending.phase,
+        qr: pending.qr,
+        name: pending.name,
+        error: pending.error,
+      },
+    }
+  }
+
+  async function listThreads(botId) {
+    const uid = teamOf(botId)?.account?.uid
+    const session = uid === undefined ? undefined : sessions.get(uid)
+    if (session?.api === undefined) throw new Error('Zalo is not connected')
+    const configured = teamOf(botId)?.threads ?? {}
+    const friends = await session.api.getAllFriends?.().catch(() => []) ?? []
+    const friendList = Array.isArray(friends) ? friends : Array.isArray(friends?.data) ? friends.data : []
+    const users = friendList
+      .map(friend => ({ id: String(friend?.userId ?? friend?.id ?? ''), kind: 'user', name: String(friend?.displayName || friend?.zaloName || friend?.display_name || friend?.zalo_name || friend?.name || '') }))
+      .filter(thread => thread.id !== '')
+    // getAllGroups returns {version, gridVerMap: {groupId: version}}, not a group map.
+    const groupMap = await session.api.getAllGroups?.().catch(() => ({})) ?? {}
+    const groupIds = groupMap?.gridVerMap !== undefined
+      ? Object.keys(groupMap.gridVerMap)
+      : Object.keys(groupMap ?? {}).filter(id => /^\d+$/.test(id))
+    // getGroupInfo rejects large batches; ask in chunks and keep the ids that fail.
+    const details = {}
+    let groupError = null
+    for (let index = 0; index < groupIds.length; index += 40) {
+      try {
+        const info = await session.api.getGroupInfo?.(groupIds.slice(index, index + 40))
+        Object.assign(details, info?.gridInfoMap ?? {})
+      } catch (error) { groupError ??= reason(error) }
+    }
+    const groups = groupIds.map(id => ({ id, kind: 'group', name: String(details[id]?.name ?? configured[id]?.name ?? id) }))
+    // A thread another Bot on the same account follows is marked, so the picker
+    // can show it as taken instead of silently double-following.
+    const mark = (thread) => {
+      const owner = uid === undefined ? undefined : threadOwner(uid, thread.id)
+      return { ...thread, mode: configured[thread.id]?.mode ?? 'off', keywords: configured[thread.id]?.keywords ?? [], ...(owner !== undefined && owner !== botId ? { owner: rt.botOf(owner)?.name ?? owner } : {}) }
+    }
+    const known = new Set([...users, ...groups].map(thread => thread.id))
+    const others = Object.entries(configured)
+      .filter(([id]) => !known.has(id))
+      .map(([id, thread]) => ({ id, kind: thread.kind ?? 'user', name: thread.name ?? id }))
+    return { users: users.map(mark), groups: groups.map(mark), others: others.map(mark), ...(groupError !== null ? { error: groupError } : {}) }
+  }
+
+  const endpoints = {
+    'zalo-status': () => live(),
+    async 'zalo-start'(body) {
+      const bot = rt.botOf(String(body.botId ?? ''))
+      if (bot === undefined) throw new Error('Unknown Bot')
+      if (teamOf(bot.id)?.account != null) throw new Error('This Bot already has a Zalo account; disconnect first')
+      if (pending !== null && pending.phase !== 'error' && pending.phase !== 'expired') throw new Error('A Zalo login is already in progress')
+      try { pending?.abort?.() } catch {}
+      const entry = { botId: bot.id, phase: 'qr', qr: null, name: null, error: null, credentials: undefined, abort: undefined }
+      pending = entry
+      void (async () => {
+        try {
+          const lib = await loadLib()
+          const EVT = lib.LoginQRCallbackEventType ?? {}
+          const api = await new lib.Zalo({ logging: false, selfListen: false }).loginQR(
+            { userAgent: QR_UA, language: 'vi' },
+            (event) => {
+              if (event?.actions?.abort !== undefined) entry.abort = event.actions.abort
+              if (event?.type === EVT.QRCodeGenerated) {
+                const image = String(event.data?.image ?? '')
+                entry.qr = image.startsWith('data:') ? image : `data:image/png;base64,${image}`
+              } else if (event?.type === EVT.QRCodeScanned) {
+                entry.phase = 'scanned'
+                entry.name = event.data?.display_name ?? null
+              } else if (event?.type === EVT.QRCodeExpired) {
+                entry.phase = 'expired'
+              } else if (event?.type === EVT.QRCodeDeclined) {
+                entry.phase = 'error'
+                entry.error = 'Login declined on the phone'
+              } else if (event?.type === EVT.GotLoginInfo) {
+                entry.credentials = event.data
+              }
+            },
+          )
+          const credentials = entry.credentials
+          if (pending !== entry) {
+            // Canceled, or a newer login replaced this one: do not keep a stray session.
+            try { api.listener?.stop?.() } catch {}
+            return
+          }
+          if (credentials === undefined) throw new Error('Zalo gave no login credentials')
+          const profile = await api.fetchAccountInfo?.().catch(() => undefined)
+          const account = { uid: String(api.getOwnId?.() ?? ''), name: String(profile?.data?.display_name ?? entry.name ?? '') }
+          state.zalo ??= {}
+          const team = state.zalo[bot.id] ??= { account: null, threads: {} }
+          team.account = account
+          team.threads ??= {}
+          await rt.secretEndpoint('secret-set', { name: zaloAccountSecret(account.uid), value: JSON.stringify(credentials), purpose: `Zalo session for ${account.name || 'the team'}`, scope: [] })
+          if (rt.secretValue(zaloSecretName(bot.id)) !== undefined) await rt.secretEndpoint('secret-delete', { name: zaloSecretName(bot.id) }).catch(() => {})
+          await rt.save()
+          // An account already listening — shared by another Bot, or attached by
+          // the secretsChanged pass this secret-set just ran — keeps its listener;
+          // this login's listener never started, so nothing needs stopping.
+          if (sessions.get(account.uid)?.api === undefined) attachSession(account.uid, api, lib, JSON.stringify(credentials))
+          pending = null
+        } catch (error) {
+          if (pending === entry) { entry.phase = 'error'; entry.error = reason(error) }
+        }
+      })()
+      return live()
+    },
+    'zalo-cancel': () => {
+      try { pending?.abort?.() } catch {}
+      pending = null
+      return live()
+    },
+    async 'zalo-logout'(body) {
+      const botId = String(body.botId ?? '')
+      const uid = teamOf(botId)?.account?.uid
+      if (uid !== undefined) {
+        state.zalo[botId].account = null
+        await rt.save()
+        // The account and its listener stay while other Bots use it; the last
+        // bound Bot's logout drops both.
+        if (botsOf(uid).length === 0) {
+          detach(uid)
+          if (rt.secretValue(zaloAccountSecret(uid)) !== undefined) await rt.secretEndpoint('secret-delete', { name: zaloAccountSecret(uid) })
+        }
+      }
+      if (rt.secretValue(zaloSecretName(botId)) !== undefined) await rt.secretEndpoint('secret-delete', { name: zaloSecretName(botId) })
+      return live()
+    },
+    async 'zalo-reconnect'(body) {
+      const uid = teamOf(String(body.botId ?? ''))?.account?.uid
+      if (uid !== undefined) await connect(uid)
+      return live()
+    },
+    // Attach a Bot to an account another Bot already logged into — no second scan.
+    async 'zalo-bind'(body) {
+      const bot = rt.botOf(String(body.botId ?? ''))
+      if (bot === undefined) throw new Error('Unknown Bot')
+      const uid = String(body.uid ?? '')
+      const owners = botsOf(uid)
+      if (owners.length === 0) throw new Error('No such Zalo account')
+      if (teamOf(bot.id)?.account != null) throw new Error('This Bot already has a Zalo account; disconnect first')
+      state.zalo ??= {}
+      const team = state.zalo[bot.id] ??= { account: null, threads: {} }
+      team.account = { ...teamOf(owners[0]).account }
+      team.threads ??= {}
+      await rt.save()
+      void connect(uid).catch(error => rt.warn('ds-bot: zalo connect for %s failed: %s', uid, error))
+      return live()
+    },
+    'zalo-threads': body => listThreads(String(body.botId ?? '')),
+    async 'zalo-thread-mode'(body) {
+      const bot = rt.botOf(String(body.botId ?? ''))
+      if (bot === undefined) throw new Error('Unknown Bot')
+      const threadId = String(body.threadId ?? '')
+      if (threadId === '') throw new Error('No thread')
+      if (!ZALO_MODES.includes(body.mode)) throw new Error('Unknown mode')
+      // A thread has one owner on an account: another Bot following it must not
+      // race the first one's replies and buffers.
+      const uid = teamOf(bot.id)?.account?.uid
+      if (body.mode !== 'off' && uid !== undefined) {
+        const owner = threadOwner(uid, threadId)
+        if (owner !== undefined && owner !== bot.id) throw new Error(`"${String(body.name ?? threadId).slice(0, 60)}" is already followed by ${rt.botOf(owner)?.name ?? 'another Bot'}`)
+      }
+      state.zalo ??= {}
+      const team = state.zalo[bot.id] ??= { account: null, threads: {} }
+      team.threads ??= {}
+      const thread = team.threads[threadId] ??= {}
+      thread.kind = body.kind === 'group' ? 'group' : 'user'
+      if (typeof body.name === 'string' && body.name.trim() !== '') thread.name = body.name.trim().slice(0, 100)
+      thread.mode = body.mode
+      thread.keywords = Array.isArray(body.keywords) ? body.keywords.map(word => String(word).trim()).filter(word => word !== '').slice(0, 20) : []
+      if (body.mode === 'off') { delete thread.buffer; delete thread.history; delete thread.historyMore; delete thread.keywords }
+      else thread.buffer ??= []
+      await rt.save()
+      return live()
+    },
+  }
+  const zaloEndpoint = (endpoint, body) => {
+    if (!enabled) throw new Error('Zalo is disabled.')
+    return endpoints[endpoint](body ?? {})
+  }
+
+  // A Bot may use its Zalo tools only while it owns the account: the group
+  // Session of a bound Bot reaches the same team record through selfOf.
+  const callerTeam = async (exec, tool) => {
+    await rt.load()
+    const bot = rt.botOf(rt.selfOf(exec.agent?.id))
+    if (bot === undefined) return { error: `Only Bots on the team can use ${tool}.` }
+    const team = bound(bot.id)
+    if (team === undefined) return { error: 'You have no Zalo account linked. Ask the user to link one in Settings → Connectors.' }
+    return { bot, team }
+  }
+  const findThread = (team, ref) => {
+    const threads = team.threads ?? {}
+    if (threads[ref] !== undefined) return [ref, threads[ref]]
+    const wanted = String(ref ?? '').trim().toLowerCase()
+    const hits = Object.entries(threads).filter(([, thread]) => String(thread.name ?? '').toLowerCase() === wanted)
+    return hits.length === 1 ? hits[0] : undefined
+  }
+
+  if (enabled) {
+    rt.teamTools.push(defineTool({
+      name: 'zalo_threads',
+      description: 'List the Zalo threads (people and groups) you follow, each with its mode: "talk" threads get your replies automatically, "watch" threads you only read until you zalo_send.',
+      parameters: {},
+      output,
+      async execute(_args, exec) {
+        const { team, error } = await callerTeam(exec, 'zalo_threads')
+        if (error !== undefined) return error
+        const lines = Object.entries(team.threads ?? {}).map(([id, thread]) =>
+          `- "${thread.name ?? id}" (${thread.kind ?? 'user'}, id ${id}) — ${thread.mode ?? 'off'}${(thread.buffer ?? []).length > 0 ? `, ${thread.buffer.length} unread` : ''}${(thread.history ?? []).length > 0 ? `, ${thread.history.length} older stored` : ''}`)
+        return lines.length === 0 ? 'No Zalo threads configured yet. Ask the user to pick them in Settings → Connectors.' : ['Zalo threads:', ...lines].join('\n')
+      },
+    }))
+    rt.teamTools.push(defineTool({
+      name: 'zalo_read',
+      description: 'Read the messages of a Zalo thread you follow, newest last — live buffered ones plus older ones pulled from Zalo when you page past them (Zalo keeps roughly two weeks back, so truly old messages are not there). Page with count and skip. Photo messages come back as image attachments while their Zalo links still live.',
+      parameters: {
+        thread: { type: 'string', required: true, description: 'Exact thread name or id from zalo_threads' },
+        count: { type: 'integer', description: `How many messages to show; default ${ZALO_READ_PAGE}, at most ${ZALO_READ_MAX}` },
+        skip: { type: 'integer', description: 'Skip this many of the newest messages — the read result says the next skip to page further back' },
+      },
+      output: {
+        schema: { type: 'object', additionalProperties: false, properties: { text: { type: 'string' }, images: { type: 'array' } } },
+        render: (_args, value) => [
+          { type: 'text', text: String(value?.text ?? '') },
+          ...(Array.isArray(value?.images) ? value.images : []).map(attachment => ({ type: 'image', attachment })),
+        ],
+      },
+      async execute(args, exec) {
+        const { bot, team, error } = await callerTeam(exec, 'zalo_read')
+        if (error !== undefined) return { text: error }
+        const found = findThread(team, String(args.thread ?? ''))
+        if (found === undefined) return { text: 'No such Zalo thread. Call zalo_threads for the list.' }
+        const [id, thread] = found
+        const count = Number.isInteger(args.count) ? Math.min(Math.max(args.count, 1), ZALO_READ_MAX) : ZALO_READ_PAGE
+        const skip = Number.isInteger(args.skip) ? Math.max(args.skip, 0) : 0
+        let known = mergedOf(thread)
+        let fetched
+        if (thread.mode !== 'off' && known.length < skip + count) {
+          fetched = await fetchOlder(bot.id, id, thread, skip + count)
+          known = mergedOf(thread)
+        }
+        const end = Math.max(known.length - skip, 0)
+        const page = known.slice(Math.max(end - count, 0), end)
+        if (page.length === 0) {
+          return { text: known.length === 0
+            ? `Nothing known from "${thread.name ?? id}" yet${fetched === false ? ' — Zalo is not connected, so nothing older could be pulled' : ''}.`
+            : `"${thread.name ?? id}" has ${known.length} known messages; skip=${skip} goes past them.` }
+        }
+        const older = end - page.length
+        const notes = [
+          older > 0 ? `${older} older — page back with skip=${skip + page.length}` : '',
+          thread.historyMore === true ? 'Zalo may hold older ones; keep paging to pull them' : '',
+          fetched === false ? 'Zalo is not connected — only what is stored shows' : '',
+        ].filter(note => note !== '')
+        // The last few photo links on the page get re-downloaded so the Bot can
+        // see them; Zalo expires them, so misses just drop out of the result.
+        const images = (await Promise.all(page.filter(line => typeof line.img === 'string').slice(-4)
+          .map(line => downloadImage(line.img, `history:${id}`)))).filter(file => file !== undefined)
+        return {
+          text: [`"${thread.name ?? id}" — messages ${end - page.length + 1}–${end} of ${known.length}:`, ...page.map(line => `${new Date(line.ts).toISOString().slice(5, 16).replace('T', ' ')} ${line.from}: ${lineText(line)}`), ...notes].join('\n')
+            + (images.length > 0 ? `\n(${images.length} photo(s) attached below)` : ''),
+          ...(images.length > 0 ? { images } : {}),
+        }
+      },
+    }))
+    rt.teamTools.push(defineTool({
+      name: 'zalo_send',
+      description: 'Send a text message to a Zalo thread you follow (mode "talk" or "watch"). Use it to speak in a watched thread; a talk thread already gets your reply automatically.',
+      parameters: {
+        thread: { type: 'string', required: true, description: 'Exact thread name or id from zalo_threads' },
+        text: { type: 'string', required: true, description: 'The message to send' },
+      },
+      output,
+      async execute(args, exec) {
+        const { bot, team, error } = await callerTeam(exec, 'zalo_send')
+        if (error !== undefined) return error
+        const text = String(args.text ?? '').trim()
+        if (text === '') return 'Nothing to send.'
+        const found = findThread(team, String(args.thread ?? ''))
+        if (found === undefined) return 'No such Zalo thread. Call zalo_threads for the list.'
+        const [id, thread] = found
+        if (thread.mode !== 'talk' && thread.mode !== 'watch') return `"${thread.name ?? id}" is off; only talk and watch threads can be written to.`
+        try {
+          await zaloSend(bot.id, id, text)
+          return `Sent to "${thread.name ?? id}".`
+        } catch (failure) {
+          return String(failure?.message ?? failure)
+        }
+      },
+    }))
+
+    ctx.effect(() => {
+      stopped = false
+      void sync()
+      return () => {
+        stopped = true
+        try { pending?.abort?.() } catch {}
+        pending = null
+        for (const uid of sessions.keys()) detach(uid)
+      }
+    }, 'ds-bot: zalo')
+
+    // Secrets edits re-link or unlink accounts; a deleted Bot's goes with it.
+    const secretsChanged = rt.secretsChanged
+    rt.secretsChanged = () => {
+      secretsChanged?.()
+      void sync()
+    }
+    const forgetBotSecrets = rt.forgetBotSecrets
+    rt.forgetBotSecrets = async (botId) => {
+      const result = await forgetBotSecrets?.(botId)
+      // The account session dies with its last bound Bot; co-users keep it.
+      const uid = teamOf(botId)?.account?.uid
+      if (uid !== undefined && botsOf(uid).every(id => id === botId)) {
+        detach(uid)
+        if (rt.secretValue(zaloAccountSecret(uid)) !== undefined) await rt.secretEndpoint('secret-delete', { name: zaloAccountSecret(uid) }).catch(() => {})
+      }
+      if (rt.secretValue(zaloSecretName(botId)) !== undefined) await rt.secretEndpoint('secret-delete', { name: zaloSecretName(botId) }).catch(() => {})
+      if (state.zalo !== undefined) delete state.zalo[botId]
+      return result
+    }
+  }
+
+  Object.assign(rt, { zaloLive: live, zaloEndpoint, zaloBound: botId => bound(botId) !== undefined, zaloSend, zaloReply, zaloTurnReply })
+}

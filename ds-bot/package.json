@@ -48,6 +48,13 @@
     "harness": "npm install --prefix dev/harness --legacy-peer-deps=false --no-package-lock --no-fund --no-audit",
     "check": "sh dev/check.sh"
   },
+  "dependencies": {
+    "@puppeteer/browsers": "3.2.4",
+    "deep-view": "0.1.0",
+    "puppeteer-core": "25.13.0",
+    "web-push": "3.6.7",
+    "zca-js": "2.2.0"
+  },
   "peerDependencies": {
     "@deepseek-ai/cordis": "*",
     "@deepseek-ai/dsh-llm": "*",
@@ -66,8 +73,5 @@
   "devDependencies": {
     "@xmldom/xmldom": "0.9.12",
     "esbuild": "0.28.2"
-  },
-  "dependencies": {
-    "deep-view": "0.1.0"
   }
 }

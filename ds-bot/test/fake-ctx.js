@@ -9,6 +9,16 @@ export function fakeAttachments() {
       files.set(ref.attachmentId, data)
       return ref
     },
+    async saveImage({ data, name, mediaType }) {
+      const ref = { attachmentId: `sha256:${files.size + 1}`, name, mediaType, width: 1, height: 1, bytes: data.length }
+      files.set(ref.attachmentId, data)
+      return ref
+    },
+    async readImage(ref) {
+      const data = files.get(ref.attachmentId)
+      if (data === undefined) throw new Error('no such file')
+      return { ref, data }
+    },
     async* readFileStream(ref) {
       const data = files.get(ref.attachmentId)
       if (data === undefined) throw new Error('no such file')
@@ -29,7 +39,9 @@ export function fakeApproval(outcome = 'allowed-once') {
 }
 
 // A stand-in for the plugin context that records what apply() registers, in order,
-// without starting any service.
+// without starting any service. Test runtimes built on this context must pass
+// `wake: false` to createRuntime/apply: the wake listener's fixed port cannot survive
+// parallel test processes, and install.test.js stays its sole binder.
 export function fakeContext({ services = {} } = {}) {
   const calls = []
   const disposers = []

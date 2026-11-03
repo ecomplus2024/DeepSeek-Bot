@@ -5,9 +5,18 @@ import { CheckIcon, SlidersIcon } from './icons.js'
 import { BotMark } from './mark.js'
 import { KeyIcon, MaskedInput } from './secret-card.js'
 import { SPRING_POP, SPRING_SHAPE, spring, useLinger, useViewport, viewBottom } from './motion.js'
+import { LOCAL_SETTINGS_NOTE, canEditProviders, openHarnessOnboarding, openHarnessSettings } from './sidebar.js'
+import { usePhone } from './mobile.js'
 import { hostText, t } from './i18n.js'
 
 const MENU_EXIT_MS = 120
+
+// The shell's Models page needs a page opened on the machine running DSH; over the
+// network it cannot read the provider directory. The row says so instead of opening it.
+function ProvidersRow({ onOpen }) {
+  if (canEditProviders()) return onOpen()
+  return h('div', { className: 'bt-menu-note' }, t(LOCAL_SETTINGS_NOTE))
+}
 
 // -------------------------------------------------------------------------
 // A Bot's model: the picker in its details panel and settings, and the message its
@@ -102,6 +111,7 @@ export const Caret = () => h('svg', { className: 'bt-model-caret', width: 12, he
 // click outside, Escape, or a scroll outside it closes it.
 export function useAnchoredMenu() {
   const [anchor, setAnchor] = useState(null)
+  const sheet = usePhone()
   const [place, setPlace] = useState(null)
   const [shownPlace, leaving] = useLinger(place, MENU_EXIT_MS)
   const button = useRef(null)
@@ -138,7 +148,7 @@ export function useAnchoredMenu() {
       ? { left, width, top: rect.bottom + 4, maxHeight: below - 16, '--bt-origin': 'top right' }
       : { left, width, bottom: viewBottom() - rect.top + 4, maxHeight: rect.top - 16, '--bt-origin': 'bottom right' })
   }, [anchor, tick])
-  return { isOpen: place !== null, shownPlace, leaving, button, menu, open, close }
+  return { isOpen: place !== null, shownPlace, leaving, button, menu, open, close, sheet }
 }
 
 // The trigger shows the model name over its provider. A Thinking section lists the
@@ -146,7 +156,7 @@ export function useAnchoredMenu() {
 // `onPick`/`onPickEffort` replace saving to the Bot, for a Bot that does not exist yet.
 // `withEfforts: false` keeps the Thinking section out, for a pick that has no level of its own.
 export function ModelMenu({ bot, roster, actions, run, wide = false, onPick, onPickEffort, withEfforts = true }) {
-  const { isOpen, shownPlace, leaving, button, menu, open, close } = useAnchoredMenu()
+  const { isOpen, shownPlace, leaving, button, menu, open, close, sheet } = useAnchoredMenu()
   const shown = modelOf(bot, roster)
   const current = bot.model ?? bot.appliedModel
   const served = servedOf(roster, current)
@@ -187,12 +197,55 @@ export function ModelMenu({ bot, roster, actions, run, wide = false, onPick, onP
         ? (!withEfforts || effortLabel === undefined ? shown.provider : `${shown.provider} · ${effortLabel}`)
         : t('{provider} · not available', { provider: shown.provider })) : null),
     h(Caret)),
-    shownPlace ? createPortal(h('div', { ref: menu, className: `bt-menu bt-model-menu${shownPlace.bottom !== undefined ? ' bt-menu-up' : ''}`, role: 'menu', 'aria-label': t('Model for {name}', { name: bot.name }), style: shownPlace, 'data-leaving': leaving || undefined },
+    shownPlace ? createPortal(h('div', { ref: menu, className: `bt-menu bt-model-menu${sheet ? ' bt-sheet' : shownPlace.bottom !== undefined ? ' bt-menu-up' : ''}`, role: 'menu', 'aria-label': t('Model for {name}', { name: bot.name }), style: sheet ? undefined : shownPlace, 'data-leaving': leaving || undefined },
       models.length > 0 ? h(ModelRows, { roster, current, onPick: pick })
         : h('div', { className: 'bt-model-none' }, t('No models are set up in DeepSeek Harness yet.')),
       withEfforts && effortRows(reasoning).length > 0 ? h(EffortRows, { reasoning, current: picked, onPick: pickEffort }) : null,
-      manage ? h('div', { className: 'bt-menu-sep', role: 'separator' }) : null,
-      manage ? h('button', { type: 'button', role: 'menuitem', onClick: () => { close(); manage() } }, h(SlidersIcon), h('span', { className: 'bt-menu-label' }, t('Models and providers…'))) : null), document.body) : null)
+      h('div', { className: 'bt-menu-sep', role: 'separator' }),
+      manage ? h('button', { type: 'button', role: 'menuitem', onClick: () => { close(); manage() } }, h(SlidersIcon), h('span', { className: 'bt-menu-label' }, t('Models and providers…')))
+        : h(ProvidersRow, { onOpen: () => h('button', { type: 'button', role: 'menuitem', onClick: () => { close(); openHarnessSettings() } }, h(SlidersIcon), h('span', { className: 'bt-menu-label' }, t('Models and providers…'))) })), document.body) : null)
+}
+
+// The model that reads images for the Bot: a pick of its own, or the model it
+// runs on. Only models that declare image input are offered.
+export function ImageModelMenu({ bot, roster, actions, run, wide = false }) {
+  const { isOpen, shownPlace, leaving, button, menu, open, close, sheet } = useAnchoredMenu()
+  const models = (roster.models ?? []).filter(model => model.input === undefined || model.input.includes('image'))
+  const served = servedOf(roster, bot.imageModel)
+  const shown = bot.imageModel === undefined ? undefined : {
+    ref: bot.imageModel,
+    name: served?.name ?? bot.imageModel.split('/').slice(1).join('/'),
+    provider: served?.providerName ?? bot.imageModel.split('/')[0],
+    served: served !== undefined,
+  }
+  const toggle = () => {
+    if (isOpen) { close(); return }
+    void actions?.refreshModels?.()
+    open()
+  }
+  const pick = (ref) => {
+    close()
+    if (ref !== bot.imageModel) void run(actions.updateBot(bot.id, { imageModel: ref ?? null }))
+  }
+  return h(Fragment, null,
+    h('button', {
+      ref: button, type: 'button', className: 'bt-model-trigger', 'data-wide': wide || undefined,
+      'aria-haspopup': 'menu', 'aria-expanded': isOpen,
+      'aria-label': t('Image model: {model}', { model: shown?.name ?? t('Default') }),
+      'data-missing': shown !== undefined && !shown.served && models.length > 0 ? '' : undefined, onClick: toggle,
+    },
+    h('span', { className: 'bt-model-copy' },
+      h('span', { className: 'bt-model-name' }, shown?.name ?? t('Same as the Bot model')),
+      shown ? h('span', { className: 'bt-model-provider' }, shown.served || models.length === 0 ? shown.provider : t('{provider} · not available', { provider: shown.provider })) : null),
+    h(Caret)),
+    shownPlace ? createPortal(h('div', { ref: menu, className: `bt-menu bt-model-menu${sheet ? ' bt-sheet' : shownPlace.bottom !== undefined ? ' bt-menu-up' : ''}`, role: 'menu', 'aria-label': t('Image model for {name}', { name: bot.name }), style: sheet ? undefined : shownPlace, 'data-leaving': leaving || undefined },
+      h('button', { type: 'button', role: 'menuitemradio', 'aria-checked': bot.imageModel === undefined, onClick: () => pick(null) },
+        h('span', { className: 'bt-menu-label' }, t('Same as the Bot model')),
+        h('span', { className: 'bt-model-tick', 'aria-hidden': true }, bot.imageModel === undefined ? h(CheckIcon) : null)),
+      models.length > 0 ? h(ModelRows, { roster: { ...roster, models }, current: bot.imageModel, onPick: pick })
+        : h('div', { className: 'bt-model-none' }, t('No models can read images yet.')),
+      h('div', { className: 'bt-menu-sep', role: 'separator' }),
+      h(ProvidersRow, { onOpen: () => h('button', { type: 'button', role: 'menuitem', onClick: () => { close(); openHarnessSettings() } }, h(SlidersIcon), h('span', { className: 'bt-menu-label' }, t('Models and providers…'))) })), document.body) : null)
 }
 
 // The card a Bot's chat opens on while the Bot has no model, or has one that is no
@@ -240,7 +293,10 @@ export function ModelChoiceDock({ sessionId, useRoster, actions }) {
             title: model.ref === roster.defaultModel ? `${model.ref} · ${t('Harness default')}` : model.ref,
             onClick: () => pick(model.ref),
           }, model.name, busy === model.ref ? h('span', { className: 'bt-model-spin', 'aria-label': t('Saving…') }) : null))))),
-        manage ? h('button', { key: 'manage', type: 'button', className: 'bt-model-chip bt-model-chip-quiet', onClick: manage }, h(SlidersIcon), t('Manage models')) : null,
+        manage ? h('button', { key: 'manage', type: 'button', className: 'bt-model-chip bt-model-chip-quiet', onClick: manage }, h(SlidersIcon), t('Manage models'))
+          : canEditProviders()
+            ? h('button', { key: 'manage', type: 'button', className: 'bt-model-chip bt-model-chip-quiet', onClick: openHarnessSettings }, h(SlidersIcon), t('Manage models'))
+            : h('div', { key: 'manage', className: 'bt-model-note' }, t(LOCAL_SETTINGS_NOTE)),
       ]
   return h('div', { className: 'bt-model-dock' },
     h('div', { className: 'bt-astack', 'data-lead': '' },
@@ -294,8 +350,10 @@ function setupChoices(actions) {
   const custom = manageModels(actions)
   return [
     actions.canSignIn?.() ? [t('Sign in to DeepSeek'), () => actions.signIn()] : null,
-    actions.openHarnessOnboarding ? [t('Enter a DeepSeek API key'), () => actions.openHarnessOnboarding('deepseek-official')] : null,
-    custom ? [t('Open settings to set up a custom model'), () => custom()] : null,
+    actions.openHarnessOnboarding ? [t('Enter a DeepSeek API key'), () => actions.openHarnessOnboarding('deepseek-official')]
+      : canEditProviders() ? [t('Enter a DeepSeek API key'), () => openHarnessOnboarding('deepseek-official')] : null,
+    custom ? [t('Open settings to set up a custom model'), () => custom()]
+      : canEditProviders() ? [t('Open settings to set up a custom model'), openHarnessSettings] : null,
   ].filter(Boolean)
 }
 
@@ -363,6 +421,7 @@ export const MODEL_CSS = `
 .bt-model-key-link:hover{text-decoration-color:currentColor}
 .bt-model-key-link:focus-visible{outline:2px solid var(--bt-accent);outline-offset:1px;border-radius:4px}
 .bt-model-key-other{margin-right:auto}
+.bt-model-note{margin-left:30px;max-width:min(560px,calc(100% - 30px));font-size:12px;line-height:17px;color:var(--bt-ink-3)}
 @keyframes bt-model-in{from{opacity:0;transform:translateY(6px)}}
 .bt-model-spin{flex:none;width:14px;height:14px;border-radius:50%;border:1.5px solid var(--bt-line-2);border-top-color:var(--bt-ink-2);animation:bt-model-spin .7s linear infinite}
 @keyframes bt-model-spin{to{transform:rotate(360deg)}}

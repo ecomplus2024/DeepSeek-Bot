@@ -92,7 +92,7 @@ function start({ replies = [], config = {}, history = {}, seed = TEAM, learningS
     ...config,
     learningTimes: { minTurnMs: 0, idleMs: 0, intervalMs: 0, tickMs: 10, ...config.learningTimes },
   }
-  const rt = createRuntime(ctx, { home, ...settings })
+  const rt = createRuntime(ctx, { home, wake: false, ...settings })
   const call = async (endpoint, payload = {}) => {
     const response = await route.fetch(new Request('http://localhost/api/bot', {
       method: 'POST',

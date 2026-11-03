@@ -60,7 +60,7 @@ function setup({ fail = false, github = { api: 'https://gh.test' } } = {}) {
     }
   }
   capture(ctx)
-  apply(ctx, { home, github })
+  apply(ctx, { home, wake: false, github })
   return { ctx, home, mounts }
 }
 
@@ -154,7 +154,7 @@ test('github: false hides the connector', async (t) => {
   const home = teamHome()
   const ctx = fakeContext()
   capture(ctx)
-  apply(ctx, { home, github: false })
+  apply(ctx, { home, wake: false, github: false })
   t.after(async () => { await ctx.dispose(); rmSync(home, { recursive: true, force: true, maxRetries: 5 }) })
   assert.deepEqual((await call(ctx, 'state', {})).value.connectors, [])
 })

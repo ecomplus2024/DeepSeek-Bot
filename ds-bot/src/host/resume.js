@@ -257,6 +257,12 @@ export function install(rt) {
     }
     if (record.resumed) return
     const trigger = record.trigger
+    // A turn answering a Zalo thread goes on under the same exchange while its work
+    // still names the thread, so the reply reaches it even though the waiter is gone.
+    if (trigger?.role === 'zalo' && trigger.exchangeId !== undefined && rt.state?.works?.[trigger.exchangeId]?.zalo !== undefined) {
+      await rt.deliver({ toId: bot.id, role: 'zalo', exchangeId: trigger.exchangeId, resumed: true, text })
+      return
+    }
     if ((trigger?.role === 'request' || trigger?.role === 'stopped') && trigger.senderSessionId && trigger.audience !== 'user' && rt.botOf(trigger.senderSessionId)) {
       // The sender still waits for this turn's answer, so it goes on under the same exchange.
       await rt.deliver({ fromId: trigger.senderSessionId, toId: bot.id, role: trigger.role, ...(trigger.exchangeId ? { exchangeId: trigger.exchangeId } : {}), ...(trigger.senderRoomId ? { fromRoomId: trigger.senderRoomId } : {}), resumed: true, text })

@@ -1,7 +1,8 @@
 // Roster: creating, changing, and deleting Bots and group chats, the Main Bot role, and
 // the first Main Bot of a new team.
 import { mkdir } from 'node:fs/promises'
-import { MAX_AVATAR_IMAGE, ROOM_MAX_MEMBERS, ROOM_MODES, ROOM_NAME_MAX, ROOM_NOTICE_MAX } from './constants.js'
+import { randomUUID, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
+import { MAX_AVATAR_IMAGE, MAX_SPACES, ROOM_MAX_MEMBERS, ROOM_MODES, ROOM_NAME_MAX, ROOM_NOTICE_MAX, SPACE_NAME_MAX, SPACE_PIN_MAX, SPACE_PIN_MIN } from './constants.js'
 import { currentColor, isColor, normalize, unquote } from './text.js'
 import { nameProblem } from '../shared/mentions.js'
 
@@ -134,6 +135,95 @@ export function install(rt) {
     return `${stem} ${index}`
   }
 
+  // ---------------------------------------------------------------------------
+  // Spaces: sidebar labels that group Bots and group chats. They organize the list
+  // only — nothing about access, memory, or Sessions follows them.
+
+  // A space by its id or name.
+  function findSpace(ref) {
+    if (ref === undefined || ref === null) return undefined
+    if (state.spaces[ref] !== undefined) return state.spaces[ref]
+    const wanted = normalize(unquote(String(ref)))
+    return Object.values(state.spaces).find(space => normalize(space.name) === wanted)
+  }
+
+  // A patch's space: an id or name becomes the saved id; null, '', or undefined
+  // means ungrouped. A name no space carries fails instead of grouping nothing.
+  const spaceRef = (value) => {
+    if (value === undefined || value === null || value === '') return undefined
+    const space = findSpace(value)
+    if (space === undefined) throw new Error(`No space named ${value}`)
+    return space.id
+  }
+
+  function cleanSpaceName(name, selfId) {
+    const next = String(name ?? '').replace(/\s+/g, ' ').trim().slice(0, SPACE_NAME_MAX)
+    if (next === '') throw new Error('A space needs a name')
+    const clash = findSpace(next)
+    if (clash !== undefined && clash.id !== selfId) throw new Error(`A space named "${next}" already exists`)
+    return next
+  }
+
+  async function createSpace({ name, color } = {}) {
+    if (Object.keys(state.spaces).length >= MAX_SPACES) throw new Error(`A team holds at most ${MAX_SPACES} spaces`)
+    const id = randomUUID()
+    state.spaces[id] = {
+      id,
+      name: cleanSpaceName(name),
+      ...(isColor(currentColor(color)) ? { color: currentColor(color) } : {}),
+      createdAt: Date.now(),
+    }
+    await rt.save()
+    return state.spaces[id]
+  }
+
+  // A PIN is kept only as a salted hash; it gates the sidebar section, nothing more.
+  const hashPin = (pin) => {
+    const salt = randomBytes(16).toString('hex')
+    return `scrypt$${salt}$${scryptSync(String(pin), salt, 32).toString('hex')}`
+  }
+  const matchPin = (stored, pin) => {
+    const [kind, salt, hex] = String(stored ?? '').split('$')
+    if (kind !== 'scrypt' || hex === undefined) return false
+    const expected = Buffer.from(hex, 'hex')
+    return timingSafeEqual(scryptSync(String(pin), salt, expected.length), expected)
+  }
+  // With an id, answers whether the PIN fits that space; without one, finds the
+  // space the PIN belongs to, or null.
+  const checkSpacePin = (id, pin) => {
+    if (id !== '') return matchPin(state.spaces[id]?.pin, pin)
+    const space = Object.values(state.spaces).find(entry => matchPin(entry.pin, pin))
+    return space?.id ?? null
+  }
+
+  async function updateSpace(id, patch = {}) {
+    const space = state.spaces[id]
+    if (space === undefined) throw new Error('Unknown space')
+    if (patch.name !== undefined) space.name = cleanSpaceName(patch.name, id)
+    if (patch.color !== undefined) {
+      if (patch.color === null) delete space.color
+      else if (isColor(currentColor(patch.color))) space.color = currentColor(patch.color)
+    }
+    if (patch.pin !== undefined) {
+      const pin = String(patch.pin ?? '')
+      if (pin === '') delete space.pin
+      else if (pin.length < SPACE_PIN_MIN || pin.length > SPACE_PIN_MAX) throw new Error(`A space PIN needs ${SPACE_PIN_MIN}–${SPACE_PIN_MAX} characters`)
+      else space.pin = hashPin(pin)
+    }
+    await rt.save()
+    return space
+  }
+
+  // Deleting a space only ungroups its members; nothing else goes with it.
+  async function deleteSpace(id) {
+    if (state.spaces[id] === undefined) throw new Error('Unknown space')
+    delete state.spaces[id]
+    for (const entry of [...Object.values(state.bots), ...Object.values(state.rooms)]) {
+      if (entry.space === id) delete entry.space
+    }
+    await rt.save()
+  }
+
   // `pickModel` leaves the model to the user: the chat opens on a model card, and the
   // greeting waits until a model is chosen. So does a Bot made when no model it can
   // run on is served.
@@ -145,7 +235,9 @@ export function install(rt) {
     return holdName('bot', cleanName, () => buildBot(cleanName, options))
   }
 
-  async function buildBot(cleanName, { role = '', instructions = '', color, brief = '', createdBy, main = false, avatar, model, effort, workDir, copyOf, pickModel = false }) {
+  async function buildBot(cleanName, { role = '', instructions = '', color, brief = '', createdBy, main = false, avatar, model, effort, imageModel, workDir, copyOf, pickModel = false, space }) {
+    // Checked before the Session is made, so a bad space name leaves no orphan.
+    const spaceId = space === undefined ? undefined : spaceRef(space)
     const cleanAvatarValue = cleanAvatar(avatar)
     // The model is fixed at creation, so a later change of the DSH default leaves it alone.
     const modelRef = model ? await rt.resolveModel(model) : pickModel ? undefined : await rt.defaultBotModel()
@@ -157,6 +249,7 @@ export function install(rt) {
     const effortId = modelRef === undefined ? undefined
       : effort === null || effort === '' ? undefined
       : (await rt.resolveEffort(modelRef, effort)) ?? await rt.defaultEffort(modelRef)
+    const imageRef = imageModel ? await rt.resolveModel(imageModel) : undefined
     const dir = workDir === undefined || workDir === null ? undefined : await rt.cleanWorkDir(workDir)
     const clash = dir === undefined ? undefined : await rt.privateClash(dir)
     if (clash) throw new Error(`${dir} is in or around the folder of ${clash.name}, a private Bot, so ${cleanName} cannot work there`)
@@ -171,7 +264,9 @@ export function install(rt) {
         ...(cleanAvatarValue ? { avatar: cleanAvatarValue } : {}),
         ...(modelRef ? { model: modelRef } : {}),
         ...(effortId ? { effort: effortId } : {}),
+        ...(imageRef ? { imageModel: imageRef } : {}),
         ...(dir ? { workDir: dir } : {}),
+        ...(spaceId !== undefined ? { space: spaceId } : {}),
         instructions: String(instructions).trim(),
         createdAt: Date.now(),
         createdBy: createdBy ?? null,
@@ -294,7 +389,8 @@ export function install(rt) {
     const bot = rt.botOf(id)
     if (bot === undefined) throw new Error('Unknown Bot')
     if (bot.private === true) throw new Error(`${bot.name} is private, so it cannot be copied`)
-    const served = (await rt.catalog()).some(entry => entry.ref === bot.model)
+    const models = await rt.catalog()
+    const served = models.some(entry => entry.ref === bot.model)
     // A folder that went away since leaves the copy in the team workspace.
     const workDir = bot.workDir !== undefined && await rt.isFolder(bot.workDir) ? bot.workDir : undefined
     // No await from here to createBot's check, so two copies at once get different names.
@@ -308,6 +404,7 @@ export function install(rt) {
       // A copy of a Bot on the model's own default stays on it (null marks the
       // explicit Default pick); else the create would inherit the profile level.
       effort: served ? (bot.effort ?? null) : undefined,
+      imageModel: models.some(entry => entry.ref === bot.imageModel) ? bot.imageModel : undefined,
       workDir,
       copyOf: bot.id,
     })
@@ -343,6 +440,8 @@ export function install(rt) {
         effortId = await rt.resolveEffort(effortRef, patch.effort)
       }
     }
+    // Checked first too: a space name no space carries must not leave the rest applied.
+    const spaceId = patch.space === undefined ? bot.space : spaceRef(patch.space)
     if (patch.name !== undefined) {
       const next = String(patch.name).trim().slice(0, 40)
       const clash = rt.findBot(next)
@@ -377,6 +476,15 @@ export function install(rt) {
       else bot.model = modelRef
       modelChanged = true
     }
+    if (patch.imageModel !== undefined) {
+      if (patch.imageModel === null || patch.imageModel === '') delete bot.imageModel
+      else {
+        const ref = await rt.resolveModel(patch.imageModel)
+        const entry = (await rt.catalog()).find(item => item.ref === ref)
+        if (entry?.input !== undefined && !entry.input.includes('image')) throw new Error(`Model ${ref} cannot read images`)
+        bot.imageModel = ref
+      }
+    }
     if (patch.effort !== undefined) {
       if (effortId === null) delete bot.effort
       else bot.effort = effortId
@@ -389,6 +497,8 @@ export function install(rt) {
     }
     if (flag === true) bot.private = true
     else if (flag === false) delete bot.private
+    if (spaceId === undefined) delete bot.space
+    else bot.space = spaceId
     const moved = moving && workDir !== bot.workDir
     if (moving) {
       if (workDir === undefined) delete bot.workDir
@@ -478,17 +588,19 @@ export function install(rt) {
   // member when it has one.
   const defaultAdmin = (members, createdBy) => (members.includes(createdBy) ? createdBy : members.find(rt.isMain) ?? null)
 
-  async function createRoom({ members: memberIds = [], name: roomName, notice, mode, admin, createdBy } = {}) {
+  async function createRoom({ members: memberIds = [], name: roomName, notice, mode, admin, createdBy, space } = {}) {
     const members = [...new Set(memberIds)].filter(id => rt.botOf(id))
     checkMembers(members)
     const custom = cleanRoomName(roomName ?? '')
     const adminId = admin !== undefined ? admin : defaultAdmin(members, createdBy)
     if (adminId !== null && !members.includes(adminId)) throw new Error('The admin must be a member of the group')
     if (mode !== undefined && !ROOM_MODES.includes(mode)) throw new Error(`Reply mode must be one of ${ROOM_MODES.join(', ')}`)
-    return holdName('room', custom, () => buildRoom({ members, custom, notice, mode, adminId, createdBy }))
+    // Checked before the Session is made, so a bad space name leaves no orphan.
+    const spaceId = space === undefined ? undefined : spaceRef(space)
+    return holdName('room', custom, () => buildRoom({ members, custom, notice, mode, adminId, createdBy, spaceId }))
   }
 
-  async function buildRoom({ members, custom, notice, mode, adminId, createdBy }) {
+  async function buildRoom({ members, custom, notice, mode, adminId, createdBy, spaceId }) {
     const title = custom || autoRoomName(members)
     // The group's own Session only relays; like a member's it moves to a fresh part
     // in the group's folder once the group has one (parts.js).
@@ -508,6 +620,7 @@ export function install(rt) {
         admin: lead,
         mode: mode ?? 'admin',
         notice: cleanNotice(notice),
+        ...(spaceId !== undefined ? { space: spaceId } : {}),
         createdAt: Date.now(),
         createdBy: createdBy ?? null,
       }
@@ -516,6 +629,9 @@ export function install(rt) {
       // The Session was resolved before the group owned it, so its relay tool lands now.
       await rt.resolveAgent(id)
       if (name !== title) await retitleRoom(room)
+      // The group's own Session never consults the model, but it takes the pictures the
+      // user posts, so it needs one that reads them (models.js).
+      await rt.applyRoomModel(room, { fresh: true }).catch(error => rt.warn('ds-bot: model for group "%s" not applied: %s', name, error))
       return room
     } catch (error) {
       // The group's Session was already made: archive it instead of leaving an orphan.
@@ -554,13 +670,15 @@ export function install(rt) {
     if (patch.mode !== undefined && !ROOM_MODES.includes(patch.mode)) throw new Error(`Reply mode must be one of ${ROOM_MODES.join(', ')}`)
     const notice = patch.notice === undefined ? undefined : cleanNotice(patch.notice)
     if (patch.workDir !== undefined && byAdmin) throw new Error(`Only the user or a Main Bot can set the folder of "${room.name}"`)
+    if (patch.space !== undefined && byAdmin) throw new Error(`Only the user or a Main Bot can set the space of "${room.name}"`)
     // A Bot's own permissions are the user's to set, so a group's are too.
     if (patch.permission !== undefined && actorId !== undefined) throw new Error(`Only the user can set the permissions of "${room.name}"`)
     const permission = patch.permission === undefined ? undefined : rt.cleanRoomPermission(patch.permission)
     // The second run is the last check before the change is written, so no other change
     // can take the name in between.
     const name = patch.name === undefined ? undefined : cleanRoomName(patch.name, room.id)
-    return { members, admin, name, notice, permission }
+    const space = patch.space === undefined ? room.space : spaceRef(patch.space)
+    return { members, admin, name, notice, permission, space }
   }
 
   // `actorId` is the Bot asking, or undefined for the user. Returns what changed, in words.
@@ -575,7 +693,7 @@ export function install(rt) {
     // No await from here until every change is written.
     const room = rt.roomOf(id)
     if (room === undefined) throw new Error('Unknown group chat')
-    const { members, admin, name, notice, permission } = planRoomChange(room, patch, actorId)
+    const { members, admin, name, notice, permission, space } = planRoomChange(room, patch, actorId)
 
     const changes = []
     const names = ids => ids.map(member => rt.botOf(member)?.name).filter(Boolean).join(', ')
@@ -599,6 +717,11 @@ export function install(rt) {
     if (notice !== undefined && notice !== (room.notice ?? '')) {
       room.notice = notice
       changes.push(notice ? 'updated the notice' : 'cleared the notice')
+    }
+    if (space !== room.space) {
+      if (space === undefined) delete room.space
+      else room.space = space
+      changes.push(space === undefined ? 'moved out of its space' : `filed under the "${state.spaces[space].name}" space`)
     }
     // Members' group conversations move on to the folder at their next turn there;
     // the group's own Session moves the same way, now when it is idle.
@@ -770,6 +893,7 @@ export function install(rt) {
 
   Object.assign(rt, {
     ensureWorkspace, keepTeamFolder, createSession, createBot, duplicateBot, updateBot, setFlags,
+    findSpace, createSpace, updateSpace, deleteSpace, checkSpacePin,
     roomBusy, autoRoomName, retitleRoom, createRoom, updateRoom, deleteRoom,
     setMain, deleteBot, bootstrap, releaseKickoff, greetingOut, holdKickoffAgain, userWrote, userAnswered,
   })

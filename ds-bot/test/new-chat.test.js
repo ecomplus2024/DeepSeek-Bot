@@ -25,6 +25,14 @@ const effect = (make, deps) => {
 const react = {
   Fragment: 'fragment',
   createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
+  createContext: (initial) => {
+    const ctx = { value: initial }
+    ctx.Provider = ({ value, children }) => { ctx.value = value; return children }
+    return ctx
+  },
+  useContext: ctx => ctx.value,
+  useSyncExternalStore: (subscribe, getSnapshot) => getSnapshot(),
+  useId: () => 'id',
   useState: (initial) => {
     const cell = slot(() => ({ value: typeof initial === 'function' ? initial() : initial }))
     return [cell.value, next => { cell.value = typeof next === 'function' ? next(cell.value) : next }]

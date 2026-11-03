@@ -18,8 +18,8 @@ export const own = (table, key) => (table != null && Object.hasOwn(table, key) ?
 export function install(rt) {
   const { ctx, home, statePath } = rt
 
-  /** @type {{version:1, workspaceId?:string, mainBotIds:string[], bots:Record<string,any>, privateArchives:any[], rooms:Record<string,any>, agents:Record<string,any>, capabilities:{items:Record<string,any>}, exchanges:any[], exchangeTurns:Record<string,number[]>, revision:number}} */
-  const state = { version: 1, mainBotIds: [], bots: {}, privateArchives: [], rooms: {}, agents: {}, capabilities: { items: {} }, exchanges: [], exchangeTurns: {}, works: {}, requests: {}, questions: {}, views: {}, prefs: {}, switching: {}, revision: 0 }
+  /** @type {{version:1, workspaceId?:string, mainBotIds:string[], bots:Record<string,any>, privateArchives:any[], rooms:Record<string,any>, spaces:Record<string,any>, agents:Record<string,any>, capabilities:{items:Record<string,any>}, exchanges:any[], exchangeTurns:Record<string,number[]>, works:Record<string,any>, requests:Record<string,any>, questions:Record<string,any>, views:Record<string,any>, prefs:Record<string,any>, switching:Record<string,any>, zalo:Record<string,any>, telegram:Record<string,any>, revision:number}} */
+  const state = { version: 1, mainBotIds: [], bots: {}, privateArchives: [], rooms: {}, spaces: {}, agents: {}, capabilities: { items: {} }, exchanges: [], exchangeTurns: {}, works: {}, requests: {}, questions: {}, views: {}, prefs: {}, switching: {}, zalo: {}, telegram: {}, revision: 0 }
   let loaded = null
   let writing = Promise.resolve()
   const { warn } = rt
@@ -117,12 +117,25 @@ export function install(rt) {
     // Teams saved before the DSH Agent existed carry no `agents`; corrupt values reset.
     if (state.agents === null || typeof state.agents !== 'object' || Array.isArray(state.agents)) state.agents = {}
     let migrated = !hadCapabilities
+    if (state.zalo === null || typeof state.zalo !== 'object' || Array.isArray(state.zalo)) state.zalo = {}
+    if (state.telegram === null || typeof state.telegram !== 'object' || Array.isArray(state.telegram)) state.telegram = {}
     if (state.capabilities === null || typeof state.capabilities !== 'object' || Array.isArray(state.capabilities)) {
       state.capabilities = { items: {} }
       migrated = true
     } else if (state.capabilities.items === null || typeof state.capabilities.items !== 'object' || Array.isArray(state.capabilities.items)) {
       state.capabilities.items = {}
       migrated = true
+    }
+    if (state.spaces === null || typeof state.spaces !== 'object' || Array.isArray(state.spaces)) {
+      state.spaces = {}
+      migrated = true
+    }
+    // A space that no longer exists releases its members back to the ungrouped section.
+    for (const entry of [...Object.values(state.bots), ...Object.values(state.rooms)]) {
+      if (entry.space !== undefined && state.spaces[entry.space] === undefined) {
+        delete entry.space
+        migrated = true
+      }
     }
     for (const bot of Object.values(state.bots)) {
       if (!Array.isArray(bot.capabilities)) {
@@ -297,7 +310,10 @@ export function install(rt) {
       if (holder === undefined) {
         warn('ds-bot: the other dsh has closed; this one now saves the Bot team')
         warnedReadOnly = false
-        adopt(readFileState())
+        adopt(await readFileState())
+        // Connector syncs (telegram, zalo) only ran at startup while read-only;
+        // re-run them now that this host writes again.
+        rt.secretsChanged?.()
         return
       }
     } else if (!lockBroken && !lock.owns()) {

@@ -1,16 +1,24 @@
 import { createElement as h, Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { currentPart, latestMemoryChange } from './text.js'
-import { ArrowUpIcon, CloseIcon, ArrowDownIcon, GoalIcon, MemoryIcon } from './icons.js'
+import { ArrowUpIcon, CloseIcon, ArrowDownIcon, GoalIcon, MemoryIcon, SidebarIcon } from './icons.js'
 import { botState, BotAvatar, RoomAvatar } from './mark.js'
 import { ActivityIndicator } from './activity-row.js'
 import { clockLabel, openingTurn, unseenSince } from './cells.js'
 import { GoalIsland, goalView } from './goal.js'
 import { viewBottom } from './motion.js'
+import { usePhone } from './mobile.js'
 import { t } from './i18n.js'
 
 // -------------------------------------------------------------------------
 // Conversation header
+
+// The drawer's way in, rendered by the conversation.header.leading slot. It
+// exists only at phone width, where the sidebar leaves the grid.
+export function DrawerButton({ actions }) {
+  const phone = usePhone()
+  return phone ? h('button', { type: 'button', className: 'bt-icon-btn bt-head-menu', 'aria-label': t('Menu'), title: t('Menu'), onClick: () => actions.toggleSidebar() }, h(SidebarIcon)) : null
+}
 
 // The pill's tail: a → that springs in on hover, flipping to ← while details are open.
 const GoArrow = () => h('svg', { width: 14, height: 14, viewBox: '-12 -12 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2.2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true }, h('path', { d: 'M-7 0H7M2 -5L7 0L2 5' }))

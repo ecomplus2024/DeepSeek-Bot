@@ -92,7 +92,7 @@ const start = async ({ services = {}, def = shellDef() } = {}) => {
   })
   const origGet = ctx.get
   Object.assign(ctx, { get: name => (name === 'agents' ? agentMap : origGet(name)) })
-  const rt = createRuntime(ctx, { home })
+  const rt = createRuntime(ctx, { home, wake: false })
   await rt.load?.()
   const origDeliver = rt.deliver
   rt.deliver = (...args) => { deliveries.push(args); return origDeliver ? origDeliver(...args) : Promise.resolve() }

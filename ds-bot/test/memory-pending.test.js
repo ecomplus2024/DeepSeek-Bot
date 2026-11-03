@@ -31,7 +31,7 @@ let rt
 function start({ home = mkdtempSync(join(tmpdir(), 'ds-bot-memory-')) } = {}) {
   if (!existsSync(join(home, 'state.json'))) writeFileSync(join(home, 'state.json'), JSON.stringify(TEAM))
   const ctx = fakeContext()
-  rt = createRuntime(ctx, { home })
+  rt = createRuntime(ctx, { home, wake: false })
   const tool = (name, args, sessionId) => rt.teamTools.find(d => d.name === name).execute(args, { agent: { id: sessionId } })
   const read = (...path) => readFileSync(join(home, 'memory', ...path), 'utf8')
   const journal = () => read('journal.jsonl').trim().split('\n').map(line => JSON.parse(line))

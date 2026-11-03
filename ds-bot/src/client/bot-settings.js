@@ -4,7 +4,7 @@ import { CHARACTERS, PICKER_SHAPES, PICKER_COLUMNS, CHARACTER_COLORS, SHAPES, ha
 import { isMainOf } from './sources.js'
 import { PencilIcon, ChevronRightIcon } from './icons.js'
 import { lookOf, BotMark } from './mark.js'
-import { ModelMenu, modelOf } from './model-menu.js'
+import { ModelMenu, ImageModelMenu, modelOf } from './model-menu.js'
 import { FolderMenu } from './folder-menu.js'
 import { BotSchedules } from './schedules.js'
 import { BotCapabilitiesCard } from './capability-settings.js'
@@ -211,7 +211,10 @@ export function BotSettingsForm({ bot, roster, actions, run }) {
     h(Card, { title: t('Model') },
       h('div', { className: 'bt-set-row bt-bs-row' },
         h('span', { className: 'bt-set-copy' }, h('span', { className: 'bt-bs-label' }, t('Model')), h('span', { className: 'bt-set-hint' }, modelHint(bot, roster))),
-        h(ModelMenu, { bot, roster, actions, run }))),
+        h(ModelMenu, { bot, roster, actions, run })),
+      h('div', { className: 'bt-set-row bt-bs-row' },
+        h('span', { className: 'bt-set-copy' }, h('span', { className: 'bt-bs-label' }, t('Image model')), h('span', { className: 'bt-set-hint' }, t('Reads images when the Bot cannot. Default: the model it runs on.'))),
+        h(ImageModelMenu, { bot, roster, actions, run }))),
     h(Card, { title: t('Working folder') },
       h('div', { className: 'bt-set-row bt-bs-row' },
         h('span', { className: 'bt-set-copy' }, h('span', { className: 'bt-bs-label' }, t('Folder'))),
@@ -246,6 +249,11 @@ export function BotSettingsForm({ bot, roster, actions, run }) {
         })),
     // The Main Bot tile is always first and always shown, like in the context menu.
     isTile ? null : h(Card, { title: t('Sidebar') },
+      (roster.spaces ?? []).length === 0 ? null : h('div', { className: 'bt-set-row bt-bs-row' },
+        h('span', { className: 'bt-set-copy' }, h('span', { className: 'bt-bs-label' }, t('Space')), h('span', { className: 'bt-set-hint' }, t('Files this Bot under a sidebar section.'))),
+        h('select', { className: 'bt-select', 'aria-label': t('Space'), value: bot.space ?? '', onChange: event => save({ space: event.target.value === '' ? null : event.target.value }) },
+          h('option', { value: '' }, t('Ungrouped')),
+          (roster.spaces ?? []).map(space => h('option', { key: space.id, value: space.id }, space.name)))),
       h(SwitchRow, { label: t('Pin'), hint: t('Kept above the other chats.'), on: bot.pinned === true, onChange: pinned => run(actions.setFlags(bot.id, { pinned })) }),
       isMainBot ? null : h(SwitchRow, { label: t('Hide from sidebar'), hint: t('Search still finds it.'), on: bot.hidden === true, onChange: hidden => run(actions.setFlags(bot.id, { hidden })) })),
     h(Card, { title: t('Manage') },

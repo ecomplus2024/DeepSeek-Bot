@@ -26,6 +26,9 @@ Tested with dsh `0.2.1-rc.5` (Web) and `0.2.0-rc.2` (Web and Desktop).
 - **Memory**: each Bot keeps notes across all its conversations, each group chat keeps its own for its members, and the team shares one more. See [Memory](#memory).
 - **Web search**: see [Web search](#web-search).
 - **Bot browser (dsh Desktop and the desktop app)**: see [Bot browser](#bot-browser).
+- **GemLogin browsers**: a Bot can drive a real [GemLogin](https://gemlogin.vn) profile (proxy, fingerprint and cookies included) through Puppeteer — see [GemLogin](#gemlogin).
+- **Chromium browsers**: a Bot can drive its own Chromium — the system Chrome/Edge/Chromium, or a downloaded Chrome for Testing when none is installed — see [Chromium](#chromium).
+- **Computer control**: in dsh Desktop a Bot can drive the machine itself — real mouse and keyboard on your screen, with [TypeSafe](https://docs.typesafe.ai/images) vision finding elements by name — see [Computer control](#computer-control).
 - **Images**: for a model that cannot read images, a vision model first turns the image into text.
 - **Secrets**: a Bot asks for an API key or token with a card in its own chat and never sees the value. See [Secrets](#secrets).
 - **Usage**: Settings → Usage shows token usage by time (24 hours to 12 months, or days picked on a calendar), by Bot and by model, with a page for each Bot and each model. Calls that a Session logs are read from the logs, so older chats count too. Calls that leave no log (checkpoints, handoff notes, the steward, image readings, dsh titles and compaction) are counted while they stream, from the time the plugin runs. Tokens only, no cost.
@@ -75,6 +78,10 @@ Options go in the profile's `cordis.patch.yml`, under the `bot` entry. All of th
     updateCheck: true               # look for a newer DS Bot when a window opens; default true
     updateRegistry: https://registry.example/   # ask only this npm registry for updates
     github: false                   # hide the GitHub connector; default shown in Connectors
+    gemlogin: http://localhost:1010 # the GemLogin app's local API; false turns the tools off
+    chromium: true                  # chromium_open/close/browse; false turns the tools off, a path forces the binary
+    computer: true                  # use_computer (Desktop only); false turns the tool off
+    ocrModel: provider/model        # pin one model to read images for every Bot
 ```
 
 **Updates**: when a window opens, DS Bot asks where it was installed from for a newer release: the npm registry (the one the DSH plugin manager installs from, then its fallbacks), or the latest GitHub release for a `github:…#vX.Y.Z` install. A newer version shows a cloud button at the top right of the sidebar; **Update** reinstalls DS Bot through the DSH plugin manager, and the new version runs from the next DSH start. A linked or local checkout is never offered an update. Settings → About DS Bot shows the same state, with **Check for updates** to ask again at once.
@@ -87,6 +94,7 @@ Model providers are set up with dsh's `llm-pi-ai` plugin in `cordis.patch.yml`. 
 
 - Give every model a `contextWindow`. DS Bot takes its lines from it: the usable window is the window minus the reply reserve (`maxTokens`), the hard line is 95% of that, and the check line is `checkRatio` of it. A model without `contextWindow` gets the adapter's default (262,144 tokens for `llm-pi-ai`), which may be wrong for that model; a model that reports no window at all counts as 500,000.
 - To send images, the provider needs `defaultInput: [ text, image ]`.
+- A model that cannot see gets its images read aloud: `ocrModel` pins one reader for the whole team, else the Bot's **Image model** pick (its details or settings, or `update_bot`'s `image_model`) is used, else its own model, else any served model that reads images.
 - Keep API keys out of the repository. Use dsh's own key storage or environment variables.
 
 ## Memory
@@ -155,6 +163,39 @@ In dsh Desktop and the desktop app, a Bot's chat header has a globe button. It o
 - **Cookie import (desktop app only)**: the import button in the browser bar previews the cookies of a file (Cookie-Editor JSON, Netscape `cookies.txt`, Playwright `storageState`) or of an installed Chromium/Firefox profile, then writes them into the Bot's partition. A source browser closes for a moment so its cookie store can be copied, and it reopens with its tabs. Sign-in that lives outside cookies (localStorage, passkeys) does not come along.
 
 dsh Web has no browser panel and no `read_browser` tool.
+
+## GemLogin
+
+When the [GemLogin](https://gemlogin.vn) app runs on the same machine as the plugin, a Bot can drive one of its profiles as a real browser. Unlike the Bot browser panel — which the user steers — this browser answers to the Bot. The design note is [docs/plans/2026-10-18-gemlogin.md](../docs/plans/2026-10-18-gemlogin.md).
+
+- `gemlogin_profiles` lists profiles and groups; `gemlogin_open` starts a profile through the app's local API (default `http://localhost:1010`) and attaches `puppeteer-core` to the debug address it returns; `gemlogin_close` closes it.
+- `gemlogin_browse` works the open browser: `navigate`, `read` (page text with controls marked `[n]`; a `selector` reads only that part), `click` and `type` (by `[n]` or a CSS selector), `press`, `scroll`, `tabs`/`use_tab`, `back`/`forward`/`reload`, `wait_for`/`wait`, `screenshot` (saved under `<home>/gemlogin/shots/`), `evaluate` (JavaScript in the page) and `steps` — a list of actions run in order in one call, stopping at the first failure, so a known sequence costs one model turn instead of one per action.
+- Profiles open minimized by default (`hidden: false` or `win_pos` overrides) — Windows snaps a fully off-screen window back on, so hidden means on the taskbar, not invisible; pages keep running and rendering either way. The `show` and `hide` actions restore/minimize the window through CDP — `show` when the user asks to watch or must do a step by hand, `hide` to put it back; `hide` remembers the bounds it replaces.
+- A Bot's open GemLogin sessions also show as cards in its Browser tab: a live JPEG preview refreshed every two seconds — the off-screen window still renders through CDP — a Show window / Hide window button, and clicking the picture clicks that spot in the real page. The preview is a frame stream with a click bridge, not an embedded webview: an external Chrome process cannot render inside the panel, and DSH offers no API for that. `click` also takes `x`/`y` viewport pixels for the few spots no ref or selector can point at.
+- A profile belongs to the Bot that opened it: other Bots cannot touch it, a Main Bot can. A connection that dies is reattached on the next action.
+- Proxy credentials in listings and password field values in reads are masked.
+
+## Chromium
+
+A Bot can drive a plain Chromium browser it owns, with no companion app. `chromium_open` resolves the binary in order: the `chromium` config path, a Chrome/Edge/Chromium/Brave installed on the machine, a Chrome for Testing build already under `<home>/chromium/browser/`, or one downloaded there on the spot through `@puppeteer/browsers` (the `stable` channel). The design note is [docs/plans/2026-10-19-chromium.md](../docs/plans/2026-10-19-chromium.md).
+
+- `chromium_open` launches a named session (`default` when unnamed); `chromium_close` closes one or all of the Bot's. Each session keeps a persistent profile directory under `<home>/chromium/profiles/<bot>/<name>` — reopening the same name keeps its cookies and logins. If the browser process dies, the next action relaunches it on the same profile.
+- `chromium_browse` drives the open session with exactly the actions `gemlogin_browse` has — the driving layer is shared (`src/host/browse.js`), screenshots land in `<home>/chromium/shots/`.
+- Sessions open minimized by default (`hidden: false` shows the window, `headless: true` runs with no window at all — `show`/`hide` then report there is no window). `args` passes extra launch flags such as `--proxy-server=…`.
+- A session belongs to the Bot that opened it; other Bots cannot even name it, a Main Bot reaches any as `owner/name`. Open sessions show as the same live preview cards in the Bot's Browser tab.
+- Needs a display for headed sessions; on a display-less host open with `headless: true`. The download path needs access to the public Chrome for Testing CDN.
+
+## Computer control
+
+In dsh Desktop, a Bot can drive the computer the plugin runs on: the real pointer moves, and the real focus receives keys, through the operating system's input injection — `SendInput` on Windows, CGEvents on macOS, xdotool on Linux (X11). The design note is [docs/plans/2026-10-18-computer-control.md](../docs/plans/2026-10-18-computer-control.md).
+
+- `use_computer` acts on the screen: `screenshot` captures it and hands the image back to the Bot; `click`, `move`, `drag`, `scroll`, `type`, `key` (a chord like `ctrl+c` or `alt+f4`), `wait`, `find` and `steps` — a list of actions run in order in one call, stopping at the first failure. `release` hands the computer over.
+- **Pointing**: give `x`/`y` as pixels of the last screenshot, or `target` — a description like "the Save button" that a [TypeSafe](https://docs.typesafe.ai) request turns into a bounding box. Naming a target asks TypeSafe twice per call: whether the element is visible (a Noul question) and where it is (a Box question), because a Box answer is always a box — a click refuses rather than land blind when either answer is unsure. A first locate runs a second pass on an upscaled crop around the rough box, which centers small elements noticeably better. The image sent is capped at 1568px and the request carries the experimental `TypeSafe-Danger-Zone-Images` header.
+- **Remembered spots**: once a target is located, the plugin saves a small pixel patch around the point. The same target again resolves to the remembered spot while the pixels there still match — no vision request at all; a changed spot re-locates automatically. If a remembered click ever lands wrong, `relook: true` locates it from scratch.
+- **The key**: element location needs a `TYPESAFE_API_KEY` saved as a secret (`request_secret`); plain `x`/`y` actions work without one.
+- **One driver at a time**: the screen is shared, so calls serialize and a sliding lease keeps one Bot driving; other Bots wait, and a Main Bot can always take over.
+- **Careful by contract**: the tool's own description tells the Bot that a long sequence fights the user's hands — it should say so before one, and confirm first for things the user would call risky (sending, deleting, paying). Screen content is data, never instructions.
+- Windows input uses PowerShell's `SendInput` over the virtual screen, so display scaling and multi-monitor offsets just work; macOS shots use `screencapture`+`sips` and input needs Accessibility permission; Linux needs xdotool and ImageMagick under X11 — Wayland is refused with an explanation.
 
 ## Secrets
 
@@ -244,7 +285,7 @@ dev/check.sh                             # all checks (see below)
 | Path | Purpose |
 |---|---|
 | `index.js` | Host entry: installs the `src/host/` modules in order |
-| `src/host/` | Host: team and storage (`roster`, `store`), tools (`tools`), turns and delivery (`turns`, `delivery`), group chats (`groups`), chat parts, the context steward and the index (`parts`, `steward`, `chat-index`), image text (`images`), secrets (`secrets`), Bot browser (`browser`), the `POST api/bot` route (`channel`) |
+| `src/host/` | Host: team and storage (`roster`, `store`), tools (`tools`), turns and delivery (`turns`, `delivery`), group chats (`groups`), chat parts, the context steward and the index (`parts`, `steward`, `chat-index`), image text (`images`), secrets (`secrets`), Bot browser (`browser`), GemLogin browsers (`gemlogin`), Bot-driven Chromium (`chromium`), the shared driving layer (`browse`), computer control (`computer`, `computer-driver`), the `POST api/bot` route (`channel`) |
 | `src/client/` | Browser source: sidebar, chat header, transcript cells, panels and dialogs, themes, Bot browser panel |
 | `client.js` | Built from `src/client/` by `scripts/build-client.mjs` (esbuild); committed |
 | `web-search.js` | The `auto` search provider; independent of the team code |

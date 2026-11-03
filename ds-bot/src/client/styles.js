@@ -13,7 +13,7 @@ import { SPRING_SHAPE, SPRING_TAP, SPRING_STRETCH, SPRING_POP, spring } from './
 // CONVERSATION_CSS re-skins the shell's own conversation DOM and styles what only
 // the conversation renders.
 export const SHELL_CSS = `
-body{--bt-ink:#141414;--bt-danger:#e02135;--bt-ink-2:rgba(20,20,20,.6);--bt-ink-3:rgba(20,20,20,.36);--bt-bubble:#eeeeee;--bt-sidebar:#f7f7f7;--bt-main:#fcfcfc;--bt-line:rgba(20,20,20,.08);--bt-line-2:rgba(20,20,20,.15);--bt-line-weak:rgba(20,20,20,.1);--bt-hover:rgba(119,119,119,.09);--bt-active:rgba(119,119,119,.17);--bt-card:#ffffff;--bt-accent:#4d6bfe;--bt-green:#00c972;--bt-star:#ff9800;--bt-user:#070707;--bt-user-ink:#fcfcfc;--bt-tag-bg:rgba(20,20,20,.06);--bt-tag-ink:rgba(20,20,20,.56);--bt-knob:#ffffff;--bt-glass-bg:color-mix(in srgb,var(--bt-main) 78%,transparent);--bt-glass-border:rgba(255,255,255,.72);--bt-glass-rim:rgba(20,20,20,.09);--bt-glass-shadow:0 8px 28px -6px rgba(0,0,0,.08),0 2px 6px -1px rgba(0,0,0,.04),inset 0 1px 0 rgba(255,255,255,.82);-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%;--bt-font:var(--dsw-font-family,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif)}
+body{--bt-ink:#141414;--bt-danger:#e02135;--bt-ink-2:rgba(20,20,20,.6);--bt-ink-3:rgba(20,20,20,.36);--bt-bubble:#eeeeee;--bt-sidebar:#f7f7f7;--bt-main:#fcfcfc;--bt-line:rgba(20,20,20,.08);--bt-line-2:rgba(20,20,20,.15);--bt-line-weak:rgba(20,20,20,.1);--bt-hover:rgba(119,119,119,.09);--bt-active:rgba(119,119,119,.17);--bt-card:#ffffff;--bt-accent:#4d6bfe;--bt-green:#00c972;--bt-star:#ff9800;--bt-user:#070707;--bt-user-ink:#fcfcfc;--bt-tag-bg:rgba(20,20,20,.06);--bt-tag-ink:rgba(20,20,20,.56);--bt-knob:#ffffff;--bt-qr:#fff;--bt-glass-bg:color-mix(in srgb,var(--bt-main) 78%,transparent);--bt-glass-border:rgba(255,255,255,.72);--bt-glass-rim:rgba(20,20,20,.09);--bt-glass-shadow:0 8px 28px -6px rgba(0,0,0,.08),0 2px 6px -1px rgba(0,0,0,.04),inset 0 1px 0 rgba(255,255,255,.82);-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%;--bt-font:var(--dsw-font-family,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif)}
 /* iOS waits out a double-tap zoom on buttons; the plugin's own controls never zoom. */
 :is(.bt-tool,.bt-uaction,.bt-menu button,.bt-menu-item,.bt-icon-btn,.bt-round,.bt-pill,.bt-account,.bt-set-row,.bt-settings-item,.bt-react-strip button,.bt-palette-row,.bt-palette-clear,.bt-tab,.bt-ptab,.bt-ptab-x,.bt-bcard-x,.bt-plus,.bt-q-btn,.bt-q-x,.bt-x,.bt-nc-send,.bt-send,.bt-soft,.bt-mini,.bt-side-send,.bt-shape,.bt-swatch,.bt-color,.bt-newchat,.bt-task-day,.bt-task-remove,.bt-fb-btn){touch-action:manipulation}
 :is(.bt-round,.bt-you,.bt-account,.bt-color,.bt-color span,.bt-swatch,.bt-icon-btn,.bt-avatar-trigger,.bt-avatar-pencil,.bt-plus,.bt-mic,.bt-voice){corner-shape:round}
@@ -244,6 +244,8 @@ body:not([data-bt-layout=flat]) .bt-group-msg[data-chain-next]>.bt-astack>.bt-ms
 button.bt-lead{border:0;background:none;padding:0;cursor:pointer}
 /* Rows without the avatar start where the bubble beside it starts: 22px avatar + 8px gap. */
 .bt-astack[data-lead]>.bt-msg:not(:last-child)>.bt-msg-line,.bt-astack[data-lead] .bt-reacts{margin-left:30px}
+/* A file chip under a group message starts where its bubble does. */
+.bt-group-msg>.bt-ufile{margin-left:30px}
 .bt-group-name{font-size:12px;line-height:16px;font-weight:500;margin-left:42px}
 .bt-group-name:has(>.bt-lead){display:flex;align-items:center;margin:0 0 2px;font-size:13px;line-height:22px;font-weight:600;color:var(--bt-ink)}
 .bt-group-name>.bt-lead{margin:0 8px 0 0}
@@ -599,6 +601,28 @@ button.bt-set-row:hover{background:var(--bt-hover)}
 .bt-connector-link{flex:1;font-size:12px;color:var(--bt-ink-2)}
 .bt-connector-error{padding-left:48px;font-size:12px;line-height:16px;color:var(--bt-danger)}
 
+/* Settings → Connectors → Zalo. */
+.bt-select.bt-zalo-bot{width:150px;height:30px}
+.bt-zalo-qr-box{display:flex;flex-direction:column;gap:8px;padding-left:48px;animation:bt-q-in ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing},bt-veil-in .2s ease-out}
+.bt-zalo-qr{width:180px;height:180px;box-sizing:border-box;border-radius:10px;border:.5px solid var(--bt-line);background:var(--bt-qr);padding:8px}
+.bt-zalo-threads{display:flex;flex-direction:column;gap:10px;padding-left:48px}
+.bt-zalo-thread-group{display:flex;flex-direction:column;gap:6px}
+.bt-zalo-thread-title{font-size:11px;line-height:14px;letter-spacing:.04em;text-transform:uppercase;color:var(--bt-ink-3)}
+.bt-zalo-thread{display:flex;align-items:center;gap:8px;min-width:0}
+.bt-zalo-thread-name{flex:1;min-width:0;display:flex;align-items:baseline;gap:6px;font-size:13px;overflow:hidden}
+.bt-zalo-thread-name>*:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bt-zalo-kind{flex:none;font-size:11px;color:var(--bt-ink-3)}
+.bt-zalo-thread .bt-zalo-mode{flex:none;width:86px;height:30px}
+.bt-zalo-keys{flex:2;min-width:0;height:30px}
+.bt-zalo-search{height:32px;position:sticky;top:0;z-index:1}
+.bt-zalo-more{align-self:center;margin-top:2px}
+
+/* Settings → Connectors → Telegram. */
+.bt-tg-code{display:flex;align-items:center;gap:8px;padding-left:48px}
+.bt-tg-code-value{font-family:var(--bt-mono,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:16px;letter-spacing:.16em;color:var(--bt-ink-1);user-select:all}
+.bt-tg-steps{display:flex;flex-direction:column;gap:4px;padding-left:48px;font-size:12px;line-height:17px;color:var(--bt-ink-3)}
+.bt-tg-steps a{color:var(--bt-ink-2)}
+
 /* Shell chrome reshaped for the team view. Selectors use stable data attributes where the
    shell offers them and CSS-module name suffixes elsewhere. */
 [class*="_newSession"],nav[class*="_panelList"],[class*="_logoRow"]>[class*="_brand"],[class*="_logoRow"]:not(:has([class*="_toggle"])){display:none!important}
@@ -716,6 +740,7 @@ button:hover .bt-you{background:color-mix(in srgb,var(--bt-ink) 9%,var(--bt-side
 .bt-menu[data-leaving]{pointer-events:none;animation:bt-pop-out .12s cubic-bezier(.4,0,1,1) forwards}
 .bt-menu-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bt-menu-hint{flex:none;color:var(--bt-ink-3);font-size:12px;font-variant-numeric:tabular-nums}
+.bt-menu-note{padding:6px 8px;max-width:280px;color:var(--bt-ink-3);font-size:12px;line-height:17px;white-space:normal}
 .bt-palette-layer{position:fixed;inset:var(--dsh-frame-chrome-top,0px) 0 0;z-index:70;pointer-events:auto;font-family:var(--bt-font)}
 .bt-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.46);animation:bt-fade .22s ease-out}
 .bt-palette{position:absolute;top:50%;left:50%;width:min(560px,92vw);transform:translate(-50%,-50%);display:flex;flex-direction:column;border-radius:12px;background:var(--bt-main);border:1px solid var(--bt-line-2);box-shadow:0 24px 48px -12px rgba(0,0,0,.25);overflow:hidden;color:var(--bt-ink);animation:bt-palette-in ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing},bt-veil-in .2s ease-out}
@@ -1074,7 +1099,7 @@ body[data-bt-goal] [class*="_scroll"]:has(> [class*="_column"]){padding-top:calc
 [data-composer-card]{display:flex!important;flex-direction:row!important;flex-wrap:wrap!important;align-items:center!important;gap:0!important;min-height:44px!important;border-radius:22px!important;padding:7.5px!important;box-sizing:border-box;background:var(--bt-glass-bg)!important;-webkit-backdrop-filter:blur(20px) saturate(180%)!important;backdrop-filter:blur(20px) saturate(180%)!important;border:.5px solid var(--bt-glass-rim)!important;box-shadow:var(--bt-glass-shadow),0 0 0 1px rgba(228,228,228,.04)!important;transition:border-color .15s ease,background-color .15s ease,${spring(SPRING_SHAPE, 'border-radius')}!important}
 [data-composer-card]:hover,[data-composer-card]:focus-within{border-color:color-mix(in srgb,var(--bt-ink) 30%,transparent)!important}
 [data-composer-card]:has(> [data-slot="conversation.input.attachments"] *),[data-composer-card]:has([data-composer-input] br + *),[data-composer-card]:has([data-composer-input] > :nth-child(2)){border-radius:18px!important}
-[class*="_root"]:has(> [data-composer-card]){padding:0 11px 13px 16px!important}
+[class*="_root"]:has(> [data-composer-card]){padding:0 11px max(13px,env(safe-area-inset-bottom)) 16px!important}
 [class*="_root"]:has(> [data-composer-card])>[data-composer-card]{max-width:min(992px,100%)!important}
 [data-composer-card]>[class*="_row"]{display:contents!important}
 [data-composer-card] [class*="_tools"]{order:1!important;flex:none!important;align-self:flex-end!important;margin:0!important}
@@ -1224,6 +1249,67 @@ div:has(> nav [class*="_marks"]){display:none!important}
 .bt-btw-answer p{margin:0}
 .bt-btw-fail{margin:0 0 6px;color:var(--bt-danger);font-size:13px;line-height:18px}
 @media (prefers-reduced-motion:reduce){.bt-btw-chevron{transition:none}}
+`
+
+// Phone-width layout, sharing the 768px breakpoint with the JS branches in
+// mobile.js: the sidebar becomes a drawer over the conversation, overlays go
+// fullscreen, and menus become bottom sheets. Installed last so it wins ties.
+export const MOBILE_CSS = `
+@media (max-width:768px){
+[class*="_frame"]:has(> [class*="_sidebarCol"]){grid-template-columns:0 minmax(0,1fr) minmax(0,0)!important;transition:none!important}
+[class*="_frame"]>[class*="_sidebarCol"]{position:absolute;left:0;top:0;bottom:0;z-index:46;width:min(320px,88vw);box-sizing:border-box;background:var(--bt-sidebar);border-right:.5px solid var(--bt-line-2);box-shadow:12px 0 40px rgba(0,0,0,.18);transform:translateX(-103%);transition:transform .24s cubic-bezier(.32,.72,.35,1)}
+[class*="_frame"]:not([data-sidebar-collapsed])>[class*="_sidebarCol"]{transform:none}
+[class*="_frame"]:has(> [class*="_sidebarCol"]):not([data-sidebar-collapsed])::after{content:"";position:fixed;inset:0;z-index:45;background:rgba(0,0,0,.32);animation:bt-fade .2s ease-out}
+body[data-ds-dark-theme] [class*="_frame"]:has(> [class*="_sidebarCol"]):not([data-sidebar-collapsed])::after{background:rgba(0,0,0,.5)}
+[class*="_frame"]>[class*="_handle"],[class*="_widthHandle"]{display:none!important}
+.bt-head-menu{width:32px;height:32px;border-radius:8px;pointer-events:auto}
+.bt-head-menu:hover{background:var(--bt-hover);color:var(--bt-ink)}
+.bt-pane{left:0!important}
+.bt-panel{left:0;width:100vw;border-left:0}
+.bt-panel[data-settling]>.bt-ptabs,.bt-panel[data-settling]>.bt-panel-view{width:100vw}
+.bt-panel-grip,.bt-drag-shield{display:none}
+[class*="_centerCol"]{grid-column:2;min-width:0;margin-right:0!important}
+[class*="_rightbarCol"]{grid-column:3;min-width:0;overflow:visible}
+[class*="_scroll"]:has(> [class*="_column"]){padding:44px 6px 12px 8px!important}
+.bt-msg{max-width:min(88%,560px)}
+.bt-astack[data-lead]>.bt-msg{max-width:min(calc(88% + 6px),560px)}
+.bt-settings{--bt-set-w:100vw;width:100vw;height:100%;border-radius:0;border:0;flex-direction:column}
+.bt-settings-nav{width:auto;flex-direction:row;overflow-x:auto;border-right:0;border-bottom:.5px solid var(--bt-line);padding:8px 10px;scrollbar-width:none}
+.bt-settings-nav::-webkit-scrollbar{display:none}
+.bt-settings-nav>.bt-thumb{display:none}
+.bt-settings-item{flex:none}
+.bt-settings-shell{margin:0 0 0 auto}
+.bt-settings-usage[data-off]{left:0;width:100%}
+.bt-settings-main{width:auto;height:auto;flex:1;min-height:0}
+.bt-settings-scroll{padding-bottom:calc(24px + env(safe-area-inset-bottom))}
+.bt-mem{width:100vw;height:100%;border-radius:0;border:0}
+.bt-mem-foot{padding-bottom:calc(12px + env(safe-area-inset-bottom))}
+.bt-nc-compose{padding-bottom:calc(14px + env(safe-area-inset-bottom))}
+.bt-voice-bar{padding-bottom:calc(32px + env(safe-area-inset-bottom))}
+.bt-drawer-body{padding-bottom:calc(16px + env(safe-area-inset-bottom))}
+.bt-dialog-foot{padding-bottom:calc(16px + env(safe-area-inset-bottom))}
+.bt-drop{left:8px;right:8px;width:auto}
+.bt-avedit{width:min(300px,calc(100vw - 24px))}
+.bt-us-stats{grid-template-columns:1fr 1fr}
+.bt-palette{width:100vw;left:0;top:0;transform:none;border-radius:0 0 16px 16px;border-left:0;border-right:0;border-top:0;max-height:70dvh}
+.bt-palette-list{height:min(402px,50dvh)}
+.bt-menu.bt-sheet{left:0!important;right:0;top:auto!important;bottom:0!important;transform:none;--bt-origin:bottom center;border-radius:16px 16px 0 0;border-left:0;border-right:0;border-bottom:0;min-width:0;width:auto;max-height:min(60vh,420px);max-height:min(60dvh,420px);overflow-y:auto;padding:8px 8px calc(8px + env(safe-area-inset-bottom))}
+.bt-menu.bt-sheet button{min-height:40px}
+.bt-react-strip.bt-sheet{left:0;right:0;top:auto;bottom:0;transform:none;border-radius:16px 16px 0 0;border-left:0;border-right:0;border-bottom:0;justify-content:center;padding:8px 8px calc(8px + env(safe-area-inset-bottom))}
+.bt-input,.bt-input-area,.bt-q-input,.bt-mem-input,.bt-select,.bt-to input,.bt-palette-head input,.bt-browser-address input,.bt-drawer-name-input,.bt-nc-card textarea,.bt-folder-input,[data-composer-card] [data-composer-input]{font-size:16px!important}
+}
+/* Touch has no hover: the message toolbar sits under the bubble and controls
+   hidden behind a hover stay tappable. */
+@media (hover:none){
+.bt-msg-line{flex-wrap:wrap}
+.bt-tools{position:static;transform:none;opacity:1;visibility:visible;order:3;flex-basis:100%;margin:2px 0 0;transition:none}
+.bt-tools::after{display:none}
+.bt-astack[data-lead] .bt-tools{margin-left:30px}
+.bt-tool{width:32px;height:32px}
+[data-chat-flow-kind=user] [class*="_actions"]{opacity:1!important;visibility:visible!important}
+.bt-utools{opacity:1;visibility:visible}
+.bt-ptab[aria-selected=true] .bt-ptab-x,.bt-bcard-x{opacity:1}
+}
 `
 
 // -------------------------------------------------------------------------

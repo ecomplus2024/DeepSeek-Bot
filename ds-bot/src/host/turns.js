@@ -40,6 +40,10 @@ export function answerSender(rt, id, source, text, long) {
   const back = rt.roomOf(source.senderRoomId)?.sessions?.[source.senderSessionId]
   const name = rt.botOf(rt.selfOf(id))?.name ?? 'The other Bot'
   const work = rt.closeWork?.(source.exchangeId, name, text)
+  // A Zalo thread asked for this work: the answer goes to the thread, not a Bot.
+  // Work handed on still answers its Bot sender — only the Zalo ask at the
+  // root, which has none, is answered there.
+  if (source?.zalo !== undefined && source.senderSessionId === undefined) return void rt.zaloReply?.(source.zalo, text)
   const exchangeId = randomUUID()
   void rt.deliver({
     fromId: rt.selfOf(id),
@@ -121,7 +125,7 @@ export function install(rt) {
   // The retry goes where the turn's trigger came from: a group round's waiter or a
   // Bot's request keeps its exchange; anything else is a nudge in the Bot's own chat.
   const retryTurn = (id, info, note, text) => {
-    const keeps = info !== undefined && (info.role === 'room' || expectsReply(info))
+    const keeps = info !== undefined && (info.role === 'room' || info.role === 'zalo' || info.role === 'telegram' || expectsReply(info))
     return rt.deliver({
       ...(keeps && info.senderSessionId ? { fromId: info.senderSessionId } : {}),
       toId: rt.selfOf(id),
@@ -379,7 +383,7 @@ export function install(rt) {
       entry.joined = info.joined.filter(item => item?.info !== undefined && item.info !== null)
     }
     if (rt.groupOwners.has(sessionId)) return
-    if ((expectsReply(info) && !answersUser(info)) || info.role === 'room' || (info.role === 'handoff' && info.resume !== true)) {
+    if ((expectsReply(info) && !answersUser(info)) || info.role === 'room' || info.role === 'zalo' || info.role === 'telegram' || (info.role === 'handoff' && info.resume !== true)) {
       markExchangeTurn(sessionId, entry.turn)
     }
   }
@@ -606,7 +610,8 @@ export function install(rt) {
       return
     }
     const entry = liveOf(id)
-    if (rt.groupOwners.has(id)) rt.touchRoomTurn?.(id)
+    // Zalo waiters live on a Bot's own chat too: any Session activity refreshes them.
+    rt.touchRoomTurn?.(id)
     switch (event.type) {
       case 'subagent/catalog': {
         const childId = event.data?.childId
@@ -684,6 +689,10 @@ export function install(rt) {
             && (expectsReply(claimedPending) || claimedPending.role === 'room') && !answersUser(claimedPending)) {
             entry.joined = [...carry.joined, { info: claimedPending, text: claimedPendingText }]
           }
+        }
+        if (entry.pendingExtras !== undefined) {
+          entry.joined = [...entry.joined, ...entry.pendingExtras]
+          entry.pendingExtras = undefined
         }
         break
       case 'user/message': {
@@ -765,15 +774,37 @@ export function install(rt) {
           })
         } else if (source?.kind === SOURCE_KIND) {
           if (entry.turn === undefined) {
-            entry.pending = source
-            entry.pendingText = textOf(event.data.content).replace(/^\[(?:[^\r\n]*\]\r?\n|[^\]\r\n]*\])/, '')
+            const text = textOf(event.data.content).replace(/^\[(?:[^\r\n]*\]\r?\n|[^\]\r\n]*\])/, '')
+            // A 'zalo' or 'telegram' message (or any other reply-expecting one)
+            // that arrives while another source is already pending joins the
+            // coming turn instead of replacing it, so its waiter is answered too.
+            const joins = entry.pending !== undefined
+              && (source.role === 'zalo' || source.role === 'telegram' || (expectsReply(source) && !answersUser(source)))
+              && entry.pending.exchangeId !== source.exchangeId
+              && !(entry.pendingExtras ?? []).some(extra => extra.info?.exchangeId === source.exchangeId)
+            if (joins) {
+              entry.pendingExtras = [...(entry.pendingExtras ?? []), { info: source, text }]
+            } else {
+              // A pending 'zalo'/'telegram' trigger (or another reply-expecting
+              // one) that the new source displaces keeps its deferred place, the
+              // same as a source that joins a running turn.
+              if (entry.pending !== undefined && entry.pending.exchangeId !== source.exchangeId
+                && (entry.pending.role === 'zalo' || entry.pending.role === 'telegram' || (expectsReply(entry.pending) && !answersUser(entry.pending)))) {
+                entry.pendingExtras = [...(entry.pendingExtras ?? []), { info: entry.pending, text: entry.pendingText }]
+              }
+              entry.pending = source
+              entry.pendingText = text
+            }
           }
-          else if (!opened) claimTrigger(id, entry, source)
+          // Once a source claimed the turn, a later one only joins it; overwriting
+          // the claim would leave the first one's sender (a Zalo ask's waiter, a
+          // round's call) waiting for an answer that never comes.
+          else if (!opened && entry.info === undefined) claimTrigger(id, entry, source)
           else if (source.work !== undefined && source.work !== rt.workOf?.(entry.info) && !expectsReply(source)) {
             // A result for other work than this turn's informs it, and comes back in a
             // turn of its own once this one ends, which goes on with that work.
             entry.later = [...(entry.later ?? []), { info: source, text: textOf(event.data.content).replace(/^\[(?:[^\r\n]*\]\r?\n|[^\]\r\n]*\])/, '') }]
-          } else if ((expectsReply(source) || source.role === 'room') && !answersUser(source)
+          } else if ((expectsReply(source) || source.role === 'room' || source.role === 'zalo' || source.role === 'telegram') && !answersUser(source)
             && source.exchangeId !== entry.info?.exchangeId
             && !(entry.joined ?? []).some(joined => joined.info.exchangeId === source.exchangeId)) {
             // A request that lands inside a running turn steers that work but is
@@ -991,7 +1022,9 @@ export function install(rt) {
             .catch(error => rt.warn('ds-bot: answer from %s not sent: %s', name, error))
         }
         // A retried turn answers the same waiter or sender, so this one passes nothing on.
-        if (!retry && info?.role === 'room') {
+        // A 'zalo' or 'telegram' turn answers the same way a 'room' one does: its
+        // waiter relays the reply back to that chat; without a waiter it drops.
+        if (!retry && (info?.role === 'room' || info?.role === 'zalo' || info?.role === 'telegram')) {
           const waiter = roomWaiters.get(info.exchangeId)
           roomWaiters.delete(info.exchangeId)
           const stopped = stoppedRoomTurns.delete(info.exchangeId)
@@ -999,10 +1032,16 @@ export function install(rt) {
             if (failure !== undefined) waiter.fail(failure)
             else waiter.resolve(reason?.kind === 'aborted' ? null : groupReply())
           } else if (!stopped && reason?.kind !== 'aborted') {
-            // The round moved on without this member; how its turn ends still reaches the group.
-            if (failure !== undefined) void rt.lateRoomFailure?.(id, info, failure)
+            // The round moved on without this member; how its turn ends still reaches
+            // the group. A Zalo ask's reply goes to its thread the same way when the
+            // waiter is gone — it timed out, or a restart dropped it.
+            if (info.role === 'zalo') void rt.zaloTurnReply?.(info, failure !== undefined ? { failure } : { reply: groupReply() })
+            else if (failure !== undefined) void rt.lateRoomFailure?.(id, info, failure)
             else void rt.lateRoomReply?.(id, info, groupReply(), { shown })
           }
+          // A Zalo ask's work closes with the turn that answered it — unless the Bot
+          // handed work on for it, whose results end a later turn and go there too.
+          if (info.role === 'zalo' && (reason?.kind === 'aborted' || !rt.waitsWork?.(info.exchangeId))) rt.closeWork?.(info.exchangeId, name, groupReply())
         } else if (!retry && speaksInGroup(id, info)) {
           // A turn that failed before it took any input (DSH can turn it down before its
           // first step) never names its call, so the call waiting on this Session fails.
@@ -1014,6 +1053,20 @@ export function install(rt) {
         }
         for (const request of joined) {
           if (request.info.role === 'room' && stoppedRoomTurns.delete(request.info.exchangeId)) continue
+          // A 'zalo' or 'telegram' message that joined the turn is answered through
+          // its waiter, like the trigger's, not through a deferred request of its own.
+          if (request.info.role === 'zalo' || request.info.role === 'telegram') {
+            const waiter = roomWaiters.get(request.info.exchangeId)
+            roomWaiters.delete(request.info.exchangeId)
+            if (waiter !== undefined) {
+              if (failure !== undefined) waiter.fail(failure)
+              else waiter.resolve(reason?.kind === 'aborted' ? null : groupReply())
+            } else if (reason?.kind !== 'aborted') {
+              void rt.zaloTurnReply?.(request.info, failure !== undefined ? { failure } : { reply: groupReply() })
+            }
+            if (reason?.kind === 'aborted' || !rt.waitsWork?.(request.info.exchangeId)) rt.closeWork?.(request.info.exchangeId, name, groupReply())
+            continue
+          }
           // A failed or stopped turn closes the request like any other; a finished
           // one hands it back to the Bot to answer next.
           if (failure !== undefined || reason?.kind === 'aborted') {
@@ -1035,6 +1088,14 @@ export function install(rt) {
           }).catch(error => rt.warn('ds-bot: deferred request delivery failed: %s', error))
         }
         if (rt.groupOwners.has(id)) void rt.goalSettled?.(rt.roomOf(rt.groupOwners.get(id).roomId)).catch(error => rt.warn('ds-bot: goal settle in %s failed: %s', id, error))
+        // A reply in a Bot's own chat is a new message for the user, so it
+        // pushes; a turn answering another Bot's request routes its reply to
+        // the sender instead and does not.
+        if (rt.chatOwners.has(id) && !retry && failure === undefined && reason?.kind !== 'aborted'
+          && !(info !== undefined && expectsReply(info) && !answersUser(info))) {
+          const reply = replyText()
+          if (reply !== '') rt.pushNote?.('message', { id: `chat:${rt.chatOwners.get(id)}`, title: `${name} sent a message` })
+        }
         break
       }
     }

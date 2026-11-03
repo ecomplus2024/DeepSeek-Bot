@@ -15,6 +15,7 @@ import { DetailsDrawer } from './details-drawer.js'
 import { SideChatView } from './side-chat.js'
 import { panelHasStrip, sideChatsOf, stripMenuKeys } from './side-model.js'
 import { DotsIcon, FolderIcon, SideIcon, TerminalIcon } from './icons.js'
+import { usePhone } from './mobile.js'
 import { t } from './i18n.js'
 import { rectsOverlap } from './browser-overlap.js'
 
@@ -541,6 +542,8 @@ export function BotPanel({ pane, leaving, room, overlay, roster, actions, useSes
   const [resizing, setResizing] = useState(false)
   const instant = dragging || resizing
   const [reading, setReading] = useState(false)
+  // On a phone the panel covers the screen and the conversation keeps its width.
+  const phone = usePhone()
 
   const panelWidth = fitWidth(width ?? (view === 'browser' ? DEFAULT_WIDTH : DETAILS_WIDTH), widthRange(view, room))
   // Once the browser has shown, the Bot page keeps its width (up to DETAILS_MAX).
@@ -562,9 +565,11 @@ export function BotPanel({ pane, leaving, room, overlay, roster, actions, useSes
     const switched = settling && shownView.current !== view
     shownView.current = view
     if (switched) chatRoom.hold(true)
-    chatRoom.setRight(leaving || overlay ? null : panelWidth)
+    // On a phone the panel covers the screen, like an overlay: the conversation
+    // keeps its width.
+    chatRoom.setRight(leaving || overlay || phone ? null : panelWidth)
     if (switched) chatRoom.hold(false)
-  }, [view, panelWidth, leaving, overlay])
+  }, [view, panelWidth, leaving, overlay, phone])
   useEffect(() => () => { chatRoom.setRight(null); chatRoom.hold(false) }, [])
   // A `room` change (window resize, the left column moving) lands at once.
   const mounted = useRef(false)
@@ -728,7 +733,7 @@ export function BotPanel({ pane, leaving, room, overlay, roster, actions, useSes
     'data-instant': instant || undefined, 'data-dragging': dragging || undefined, 'data-overlay': overlay || undefined, style: { '--bt-panel-w': `${panelWidth}px` },
     onAnimationEnd: (event) => { if (event.target === event.currentTarget) setLanded(true) },
   },
-    leaving || overlay ? null : h('div', { className: 'bt-panel-grip', role: 'separator', 'aria-orientation': 'vertical', 'aria-label': t('Resize panel'), onPointerDown: startResize }),
+    leaving || overlay || phone ? null : h('div', { className: 'bt-panel-grip', role: 'separator', 'aria-orientation': 'vertical', 'aria-label': t('Resize panel'), onPointerDown: startResize }),
     // Over the whole window while dragging: the cursor stays a resize cursor and the
     // pages underneath (the chat, the guest) see no pointer.
     dragging ? createPortal(h('div', { className: 'bt-drag-shield', 'aria-hidden': true }), document.body) : null,
@@ -823,6 +828,12 @@ export const BROWSER_CSS = `
 .bt-bcard-new{display:flex;align-items:center;justify-content:center;gap:6px;height:40px;border:.5px dashed var(--bt-line-2);border-radius:12px;background:none;color:var(--bt-ink-3);font:inherit;font-size:12.5px;cursor:pointer}
 .bt-bcard-new:hover{color:var(--bt-ink);border-color:var(--bt-ink-3)}
 .bt-bcard-new svg{width:14px;height:14px}
+.bt-gem{display:flex;flex-direction:column;gap:12px}
+.bt-gem-shot{cursor:crosshair}
+.bt-gem-shot img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top;user-select:none}
+.bt-gem-badge{flex:none;font-size:10.5px;line-height:15px;padding:1px 6px;border-radius:6px;background:var(--bt-hover);color:var(--bt-ink-3)}
+.bt-gem-toggle{flex:none;border:.5px solid var(--bt-line-2);border-radius:8px;background:none;color:var(--bt-ink-2);font:inherit;font-size:11.5px;line-height:16px;padding:3px 8px;cursor:pointer}
+.bt-gem-toggle:hover{color:var(--bt-ink);border-color:var(--bt-ink-3)}
 .bt-browser-empty-mark{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center}
 /* Cookie imports */
 .bt-import-menu{position:absolute;top:6px;right:6px;z-index:6;width:236px;padding:6px;border-radius:16px;background:var(--bt-main);border:.5px solid var(--bt-line-2);box-shadow:0 10px 32px -8px rgba(0,0,0,.14),0 2px 8px rgba(0,0,0,.06);animation:bt-bcard-in .18s cubic-bezier(.16,1,.3,1) both}

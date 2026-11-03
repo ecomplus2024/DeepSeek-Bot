@@ -1,14 +1,16 @@
-import { createElement as h, Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { createElement as h, Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import { FishLogo } from './dsh-primitives.js'
 import { isMainOf } from './sources.js'
 import { currentPart, previewOf, relativeShort } from './text.js'
-import { PlusIcon, SearchIcon, SidebarIcon, GaugeIcon, ClockIcon, GearIcon, PinMarkIcon, ConnectorIcon, SwitchIcon, CloudDownloadIcon, SignInIcon, SignOutIcon, SlidersIcon } from './icons.js'
+import { PlusIcon, SearchIcon, SidebarIcon, GaugeIcon, PlugIcon, ClockIcon, GearIcon, PinMarkIcon, ConnectorIcon, SwitchIcon, CloudDownloadIcon, SignInIcon, SignOutIcon, SlidersIcon } from './icons.js'
+import { STORAGE } from './storage.js'
 import { MAIN_LOOK } from './characters.js'
 import { botState, BotMark, BotAvatar, RoomAvatar } from './mark.js'
 import { reducedMotion } from './activity-row.js'
 import { Shimmer, workPhrase } from './cells.js'
 import { springEasing, SPRING_SHAPE, useLinger, useViewport, viewBottom } from './motion.js'
+import { usePhone, viewportHeight } from './mobile.js'
 import { hostText, t } from './i18n.js'
 import { clientErrors } from './diagnostics.js'
 import { showsDshRow } from './dsh-offer.js'
@@ -242,6 +244,56 @@ function AgentRow({ agent, actions, useSessions, useSessionStatus, useUi, wide, 
         })))))
 }
 
+// The inline PIN prompt a locked space shows in place of its members. Soft gate:
+// the roster is already on the page — this keeps the space closed for casual eyes only.
+function SpacePinForm({ onUnlock }) {
+  const [pin, setPin] = useState('')
+  const [wrong, setWrong] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const submit = async () => {
+    if (busy || pin === '') return
+    setBusy(true)
+    try {
+      if (await onUnlock(pin)) return
+      setWrong(true)
+      setPin('')
+    } finally { setBusy(false) }
+  }
+  return h('form', { className: 'bt-space-pin', onSubmit: event => { event.preventDefault(); void submit() } },
+    h('input', { type: 'password', className: 'bt-bs-input', autoComplete: 'off', autoFocus: true, value: pin, maxLength: 64,
+      placeholder: t('Space PIN'), 'aria-label': t('Space PIN'),
+      onChange: event => { setPin(event.target.value); setWrong(false) } }),
+    wrong ? h('span', { className: 'bt-space-pin-err', role: 'alert' }, t('Wrong PIN')) : null)
+}
+
+// The space the list shows: 'ungrouped' (the default) or a space id. The key once
+// held folded sections as an array; anything but a string reads as 'ungrouped'.
+const readView = () => {
+  try {
+    const value = JSON.parse(localStorage.getItem(STORAGE.spaces) ?? 'null')
+    return typeof value === 'string' ? value : 'ungrouped'
+  } catch { return 'ungrouped' }
+}
+const writeView = (view) => {
+  try { localStorage.setItem(STORAGE.spaces, JSON.stringify(view)) } catch { /* storage unavailable */ }
+}
+
+// Spaces whose PIN was entered on this browser; unlocked state does not roam.
+// The remote gate can also grant one space through the ds-bot-unlocked cookie.
+const readUnlocks = () => {
+  let list = []
+  try { list = JSON.parse(localStorage.getItem(STORAGE.spaceUnlocks) ?? '[]') } catch { /* storage unavailable */ }
+  const set = new Set(list)
+  // A page rendered outside a browser (a test, a prerender) has no cookie jar.
+  let gate
+  try { gate = /(?:^|;\s*)ds-bot-unlocked=([^;]+)/.exec(document.cookie ?? '')?.[1] } catch { gate = undefined }
+  if (gate) set.add(decodeURIComponent(gate))
+  return set
+}
+const writeUnlocks = (set) => {
+  try { localStorage.setItem(STORAGE.spaceUnlocks, JSON.stringify([...set])) } catch { /* storage unavailable */ }
+}
+
 // List rows glide to new places on a spring.
 const GLIDE = springEasing(1000, 63)
 
@@ -337,6 +389,36 @@ export function TeamSidebar(props) {
     ]
     return entries.sort((a, b) => Number(Boolean(b.item.pinned)) - Number(Boolean(a.item.pinned)) || b.at - a.at)
   }, [roster, updated])
+  // Evaluated now, not lazily: the tests render the sidebar outside React.
+  const [view, setView] = useState(readView())
+  const pick = (id) => { setView(id); writeView(id) }
+  const [unlocked, setUnlocked] = useState(readUnlocks())
+  const unlock = async (id, pin) => {
+    if (await actions.checkSpacePin(id, pin) !== true) return false
+    setUnlocked((current) => {
+      const next = new Set(current)
+      next.add(id)
+      writeUnlocks(next)
+      return next
+    })
+    return true
+  }
+  // The space picker filters the list to one view: Ungrouped, or one space. A
+  // locked space asks for its PIN in place of the list. A picked id that no
+  // longer exists reads Ungrouped.
+  const spaces = roster.spaces ?? []
+  const spaceIds = useMemo(() => new Set(spaces.map(space => space.id)), [spaces])
+  const chosen = spaces.find(space => space.id === view)
+  const selected = chosen !== undefined ? view : 'ungrouped'
+  const chosenLocked = chosen !== undefined && chosen.locked === true && !unlocked.has(chosen.id)
+  const listed = useMemo(() => {
+    if (!wide || spaces.length === 0) return order
+    if (chosen !== undefined) {
+      if (chosenLocked) return []
+      return order.filter(entry => entry.item.space === chosen.id)
+    }
+    return order.filter(entry => entry.item.space === undefined || !spaceIds.has(entry.item.space))
+  }, [order, spaces, spaceIds, chosen, chosenLocked, wide])
   const main = roster.byId[roster.mainBotId]
   useListGlide(listRef, wideContent, order.map(entry => entry.item.id).join(','))
   useLandOnMainBot(roster, useSessions, actions)
@@ -579,13 +661,19 @@ export function TeamSidebar(props) {
   const content = h('div', { className: wideContent ? 'bt-side' : 'bt-side bt-rail', onKeyDown: typeToSearch },
     top,
     wideContent && roster.readOnly ? h('div', { className: 'bt-hint bt-read-only', role: 'status' }, hostText(roster.readOnly)) : null,
+    wideContent && spaces.length > 0 ? h('div', { className: 'bt-space-pick' },
+      h('select', { className: 'bt-select', 'aria-label': t('Space'), value: selected, onChange: event => pick(event.target.value) },
+        h('option', { value: 'ungrouped' }, t('Ungrouped')),
+        spaces.map(space => h('option', { key: space.id, value: space.id },
+          space.locked === true && !unlocked.has(space.id) ? `${space.name} · ${t('Locked')}` : space.name)))) : null,
     h('div', { ref: listRef, className: 'bt-list', role: 'region', 'aria-label': t('Bot list') },
       wideContent ? (main ? h(BotRow, { ...rowProps, bot: main, marked: markedUnread[main.id] === true }) : roster.ready ? null : h('div', { className: 'bt-hint' }, uiNow.bootFailed ? bootHint() : t('Setting up your Main Bot…'))) : null,
-      order.map(entry => (entry.kind === 'bot'
-        ? h(BotRow, { key: entry.item.id, ...rowProps, bot: entry.item, marked: markedUnread[entry.item.id] === true })
-        : entry.kind === 'room'
-          ? h(RoomRow, { key: entry.item.id, ...rowProps, room: entry.item, marked: markedUnread[entry.item.id] === true })
-          : h(AgentRow, { key: entry.item.id, ...rowProps, agent: entry.item, marked: markedUnread[entry.item.id] === true })))),
+      chosenLocked ? h(SpacePinForm, { onUnlock: pin => unlock(chosen.id, pin) })
+        : listed.map(entry => (entry.kind === 'bot'
+          ? h(BotRow, { key: entry.item.id, ...rowProps, bot: entry.item, marked: markedUnread[entry.item.id] === true })
+          : entry.kind === 'room'
+            ? h(RoomRow, { key: entry.item.id, ...rowProps, room: entry.item, marked: markedUnread[entry.item.id] === true })
+            : h(AgentRow, { key: entry.item.id, ...rowProps, agent: entry.item, marked: markedUnread[entry.item.id] === true })))),
     foot)
   return h(Fragment, null,
     h(TitleToggle, { hidden: mode === 'hidden', onToggle }),
@@ -684,6 +772,37 @@ function UpdateButton({ useUpdate, actions }) {
                 }, dshPhase === 'installing' ? t('Updating…') : dshPhase === 'failed' ? t('Try again') : t('Update')))) : null), document.body) : null)
 }
 
+// The footer entry to the shell's plugin panel, marked as not yet adapted: the red
+// badge and a hover tip explain that plugin support lands step by step.
+export function ConnectPlugins({ wide, actions }) {
+  const tipId = useId()
+  const [tip, setTip] = useState(false)
+  const timer = useRef(0)
+  const button = useRef(null)
+  const [box, setBox] = useState(null)
+  useEffect(() => () => clearTimeout(timer.current), [])
+  if (!wide) return null
+  const show = () => {
+    clearTimeout(timer.current)
+    timer.current = setTimeout(() => {
+      const rect = button.current?.getBoundingClientRect()
+      if (!rect) return
+      const left = Math.max(8, Math.min(rect.left, window.innerWidth - 268))
+      setBox({ left, bottom: viewportHeight() - rect.top + 10 })
+      setTip(true)
+    }, 250)
+  }
+  const hide = () => { clearTimeout(timer.current); setTip(false) }
+  return h('span', { className: 'bt-connect-wrap' },
+    h('button', {
+      ref: button, type: 'button', className: 'bt-connect bt-connect-foot', 'aria-describedby': tip ? tipId : undefined,
+      onMouseEnter: show, onMouseLeave: hide, onFocus: show, onBlur: hide,
+      onClick: () => actions.selectPanel('plugins'),
+    },
+    h(PlugIcon), t('Connect plugins'), h('span', { className: 'bt-connect-warn', 'aria-hidden': true }, '!')),
+    tip && box ? createPortal(h('span', { role: 'tooltip', id: tipId, className: 'bt-connect-tip', style: box },
+      t('Plugin compatibility is not fully verified.')), document.body) : null)
+}
 // Account seat of the Settings trigger: the visible label stays for assistive tech only.
 export function YouAvatar() {
   return h('span', { className: 'bt-you-wrap' },
@@ -699,6 +818,16 @@ export function holdShellShortcuts(shortcuts) {
   shellShortcuts = shortcuts
   return () => { if (shellShortcuts === shortcuts) shellShortcuts = null }
 }
+
+// DSH keeps its settings document on the Host only for a page opened on that machine;
+// a page reached over the network (a tunnel, another device) gets a process-local one
+// and its Models page cannot list providers. The plugin's own pickers work either way,
+// since they read the team's served models over its API.
+export const canEditProviders = () => typeof location === 'undefined'
+  || ['localhost', '127.0.0.1', '::1', '[::1]'].includes(location.hostname)
+// What the plugin says in place of the shell's own pages there: the models the team
+// already serves stay pickable, since the plugin reads them over its own API.
+export const LOCAL_SETTINGS_NOTE = 'Harness settings open on the machine running DSH only: use http://127.0.0.1:3080 there. The models already served stay pickable here.'
 
 // DeepSeek Harness hands its settings opener only to the settings.launcher seat. When
 // the Desktop's account menu holds that seat, its first item (Settings) is the way in;
@@ -781,6 +910,7 @@ const NO_SNAPSHOT = () => null
 // over a shell account plugin's own launcher (the Desktop's "··· More"), which comes
 // back in Agent mode; FooterAccount stands in while no seat exists at all.
 export function AccountLauncher({ seat = true, settingsOpen, openSettings, openOnboarding, actions }) {
+  const phone = usePhone()
   const [open, setOpen] = useState(false)
   useLayoutEffect(() => {
     if (!seat) return undefined
@@ -879,8 +1009,8 @@ export function AccountLauncher({ seat = true, settingsOpen, openSettings, openO
   else if (signedOut) groups.push([[t('Sign in to DeepSeek'), SignInIcon, () => actions.signIn()]])
   return h(Fragment, null,
     h('button', { ref: button, type: 'button', className: 'bt-account', 'aria-label': t('Account'), 'aria-haspopup': 'menu', 'aria-expanded': open, onClick: toggle },
-      h('span', { className: 'bt-you', 'aria-hidden': true }, h(GearIcon))),
-    open && box ? createPortal(h('div', { className: 'bt-menu bt-menu-up bt-account-menu', role: 'menu', 'aria-label': t('Account'), style: box },
+      h('span', { className: 'bt-you', 'aria-hidden': true }, h(BotMark, { look: MAIN_LOOK, size: 24 }))),
+    open && box ? createPortal(h('div', { className: `bt-menu bt-menu-up bt-account-menu${phone ? ' bt-sheet' : ''}`, role: 'menu', 'aria-label': t('Account'), style: phone ? undefined : box },
       confirm !== null ? h('div', { className: 'bt-confirm', role: 'alertdialog', 'aria-label': accountT('signOut') },
         h('p', { className: 'bt-confirm-text' }, accountT(confirm === 'running' ? 'signOutRunningDescription' : confirm === 'unknown' ? 'signOutUnknownDescription' : 'signOutDescription')),
         signOutError !== '' ? h('p', { className: 'bt-confirm-error', role: 'alert' }, signOutError) : null,
@@ -1001,6 +1131,7 @@ export const SIDEBAR_CSS = `
 .bt-rail .bt-row{position:relative}
 .bt-rail .bt-pin{position:absolute;top:1px;left:calc(50% + 14px)}
 .bt-side .bt-read-only{margin:4px 8px 6px;padding:8px 10px;border-radius:10px;background:var(--bt-hover);font-size:12px;line-height:1.45;text-align:left}
+.bt-pair-pin{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:17px;font-weight:600;letter-spacing:.18em;color:var(--bt-accent);white-space:nowrap}
 [class*="_footArea"]:has(.bt-foot-account){grid-template-columns:auto minmax(0,1fr) auto;column-gap:6px}
 [class*="_footArea"]>[class*="_footerActions"]>div>.bt-foot-account{grid-column:1;order:1;display:inline-flex}
 [class*="_footArea"]:has(.bt-foot-account)>[class*="_settingsArea"]{grid-column:3}
@@ -1050,4 +1181,10 @@ export const SIDEBAR_CSS = `
 .bt-agent-sub[data-open] .bt-agent-sub-row{animation:bt-agent-row-in .24s ease both;animation-delay:calc(var(--i, 0)*30ms)}
 @keyframes bt-agent-row-in{from{opacity:0;filter:blur(4px)}to{opacity:1;filter:blur(0)}}
 @media (prefers-reduced-motion:reduce){.bt-agent-sub{transition:none}.bt-agent-sub .bt-agent-sub-row{animation:none}}
+
+/* The space picker sits over the list; a locked space shows its PIN row there. */
+.bt-space-pick{flex:none;margin:2px 8px 4px}
+.bt-space-pin{display:flex;align-items:center;gap:6px;margin:2px 4px 4px;padding:0 8px 0 18px}
+.bt-space-pin .bt-bs-input{flex:1;width:auto;text-align:left}
+.bt-space-pin-err{font-size:11.5px;color:var(--bt-danger)}
 `

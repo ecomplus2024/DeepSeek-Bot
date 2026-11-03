@@ -53,7 +53,7 @@ async function start() {
     route = options
     return register(options)
   }
-  rt = createRuntime(ctx, { home })
+  rt = createRuntime(ctx, { home, wake: false })
   // show_view lives in the agent scope; a Bot agent appearing registers it.
   await ctx.emitAsync('agent/created', { agent: ctx.scopeAgent('writer-now') })
   let seq = 0

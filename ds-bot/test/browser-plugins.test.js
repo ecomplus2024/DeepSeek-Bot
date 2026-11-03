@@ -36,7 +36,7 @@ function start(config, { services = {}, team = TEAM } = {}) {
     route = options
     return register(options)
   }
-  rt = createRuntime(ctx, { home, ...config })
+  rt = createRuntime(ctx, { home, wake: false, ...config })
   return {
     ctx,
     rt,
@@ -406,7 +406,7 @@ test('the selected plugin is the same for every Bot, and profiles stay apart', a
 test('an unknown browser plugin is refused', () => {
   const home = mkdtempSync(join(tmpdir(), 'ds-bot-browser-plugin-'))
   try {
-    assert.throws(() => createRuntime(fakeContext(), { home, browserPlugin: 'devtools' }), /Choose refs, script, task/)
+    assert.throws(() => createRuntime(fakeContext(), { home, wake: false, browserPlugin: 'devtools' }), /Choose refs, script, task/)
   } finally {
     rmSync(home, { recursive: true, force: true })
   }
@@ -438,7 +438,7 @@ test('browserExecutablePath must be a string when configured', () => {
   const home = mkdtempSync(join(tmpdir(), 'ds-bot-browser-plugin-'))
   try {
     assert.throws(
-      () => apply(fakeContext(), { home, browserPlugin: 'refs', browserExecutablePath: 42 }),
+      () => apply(fakeContext(), { home, wake: false, browserPlugin: 'refs', browserExecutablePath: 42 }),
       /browserExecutablePath must be a string/,
     )
   } finally {

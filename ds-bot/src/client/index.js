@@ -5,13 +5,13 @@ import { createSource, EMPTY_ROSTER, indexRoster, isAgentSession } from './sourc
 import { teamActions } from './team-actions.js'
 import { themeCss, shellTokens, registry, registerShape, registerTheme, allThemes, layoutOf, widthOf, flatWidthOf } from './themes.js'
 import { MENTION_ORIGIN, currentPart } from './text.js'
-import { SHELL_CSS, CONVERSATION_CSS, installStyles, installCompiledStyles } from './styles.js'
+import { SHELL_CSS, CONVERSATION_CSS, MOBILE_CSS, installStyles, installCompiledStyles } from './styles.js'
 import { lookOf } from './mark.js'
 import { TeamSidebar, YouAvatar, AccountLauncher, FooterAccount, BrandMark, BrandName, BotReturn, SIDEBAR_CSS, RETURN_CSS, holdShellShortcuts, openHarnessOnboarding, openHarnessSettings, MODELS_STEP, MODELS_STEP_ORDER, OpenModelsStep } from './sidebar.js'
 import { frameLayout, readSidebar, writeSidebar, toggledPref, DSH_NARROW } from './frame-layout.js'
 import { installFrameWatch } from './frame-watch.js'
-import { HeaderPill } from './header.js'
-import { ComposerPlus, ComposerVoice, menuIcons } from './composer.js'
+import { DrawerButton, HeaderPill } from './header.js'
+import { ComposerPlus, ComposerVoice, SENDING_CSS, SendingDock, menuIcons } from './composer.js'
 import { CHATS_SOURCE, atSources } from './at-menu.js'
 import { BtwDock, BtwTurnTail } from './btw.js'
 import { SIDE_CSS, sideSource } from './side-chat.js'
@@ -45,13 +45,17 @@ import { ErrorToast, FEEDBACK_CSS } from './feedback.js'
 import { ABOUT_CSS } from './about.js'
 import { MEMBER_CSS, MemberDock } from './member-status.js'
 import { GOAL_CSS } from './goal.js'
-import { USER_MESSAGE_CSS, UserMessageCell, canDrawUserMessages } from './user-message.js'
+import { DownloadFileAction, USER_MESSAGE_CSS, UserMessageCell, canDrawUserMessages } from './user-message.js'
 import { noticeApprovals } from './approval-notices.js'
 import { listedOpener } from './open-listed.js'
+import { isPhone, layoutFrame, drawerOpen } from './mobile.js'
+import { addEscapeLayer } from './overlay-hooks.js'
+import { installPwa } from './pwa.js'
 
 export const inject = ['sessions', 'uiWorkspace', 'uiConversation', 'slots', 'theme', 'layout']
 
 export function apply(ctx) {
+  installPwa()
   ctx.effect(() => installLocale(ctx.get('locale')), 'ds-bot: interface copy')
   migrateStorage()
   // The window's cached prefs stand in until the first pull answers: a saved
@@ -183,6 +187,8 @@ export function apply(ctx) {
     if (value.learning !== undefined && JSON.stringify(value.learning) !== JSON.stringify(current.learning ?? {})) live.learning = value.learning
     if (value.btwCards !== undefined && JSON.stringify(value.btwCards) !== JSON.stringify(current.btwCards ?? {})) live.btwCards = value.btwCards
     if (value.sideChats !== undefined && JSON.stringify(value.sideChats) !== JSON.stringify(current.sideChats ?? {})) live.sideChats = value.sideChats
+    if (value.zalo !== undefined && JSON.stringify(value.zalo) !== JSON.stringify(current.zalo ?? null)) live.zalo = value.zalo
+    if (value.pair !== undefined && JSON.stringify(value.pair) !== JSON.stringify(current.pair ?? null)) live.pair = value.pair
     if (Object.keys(live).length > 0 && current.ready) roster.set({ ...current, ...live })
     if (value.unchanged || (value.revision === current.revision && value.modelsKey === current.modelsKey)) return
     // On a browser with no visit record yet, everything already there counts as seen.
@@ -450,6 +456,12 @@ export function apply(ctx) {
       })
     }
   }
+  // On a phone the open sidebar is a drawer over the conversation; a
+  // navigation takes it down.
+  const closeDrawer = () => {
+    if (!isPhone()) return
+    if (drawerOpen()) ctx.layout.toggleSidebar()
+  }
   const actions = {
     ...teamActions({ call, after, partFor, roster, ui, live, cards, heldCards, turnClock, panelFolded }),
     learningAnswer: (id, approve) => after(call('learning-answer', { id, approve })),
@@ -461,6 +473,7 @@ export function apply(ctx) {
       if (isAgentSessionId(id)) return actions.openAgentSession(id)
       ui.set(state => (state.newChat || state.exchange || state.menu || state.palette ? { ...state, newChat: null, exchange: null, menu: null, palette: null } : state))
       setPlain(false)
+      closeDrawer()
       const target = partFor(id)
       show(target)
     },
@@ -469,6 +482,7 @@ export function apply(ctx) {
     openAgentSession: (sessionId) => {
       ui.set(state => ({ ...state, newChat: null, exchange: null, menu: null, palette: null, details: null, view: 'details', renaming: false, tab: null }))
       setPlain(true)
+      closeDrawer()
       show(sessionId)
     },
     addAgent: async () => {
@@ -526,10 +540,11 @@ export function apply(ctx) {
       if (last) await pull().catch(() => {})
       const bot = last ? roster.getSnapshot().byId[last.botId] : undefined
       setPlain(false)
+      closeDrawer()
       const target = bot && currentPart(bot) !== last.sessionId ? currentPart(bot) : partFor(id)
       show(target)
     },
-    selectPanel: (id) => { ctx.layout.selectPanel(id) },
+    selectPanel: (id) => { closeDrawer(); ctx.layout.selectPanel(id) },
     toggleSidebar: () => { ctx.layout.toggleSidebar() },
     // The left column's own preference: 'open', 'rail' or 'hidden'. The switch
     // remembers the shown one it hid; a drag sets the open column's width.
@@ -592,6 +607,88 @@ export function apply(ctx) {
       ui.set(state => ({ ...state, reactions }))
     },
     clearUnread: id => writeUnread(id, false),
+    setFlags: (id, flags) => after(call('set-flags', { id, ...flags })),
+    deleteRoom: id => after(call('delete-room', { id })),
+    openMenu: (menu) => { ui.set(state => ({ ...state, menu })) },
+    closeMenu: () => { ui.set(state => (state.menu ? { ...state, menu: null } : state)) },
+    closeOverlay: () => { ui.set(state => ({ ...state, newChat: null, exchange: null, details: state.newChat || state.exchange ? state.details : null })) },
+    createBot: payload => after(call('create-bot', payload)),
+    createRoom: (members, options = {}) => after(call('create-room', { members, ...options })),
+    updateBot: (id, patch) => after(call('update-bot', { id, ...patch })),
+    refreshModels: () => after(call('models')).catch(() => {}),
+    efforts: ref => call('efforts', { ref }),
+    folders: () => call('folders'),
+    folderPick: () => call('folder-pick'),
+    folderList: path => call('folder-list', { path: path ?? '' }),
+    deleteBot: id => after(call('delete-bot', { id })),
+    duplicateBot: id => after(call('duplicate-bot', { id })),
+    setPrefs: prefs => after(call('set-prefs', prefs)),
+    setMain: (id, main = true, options = {}) => after(call('set-main', { id, main, ...options })),
+    updateRoom: (id, patch) => after(call('update-room', { id, ...patch })),
+    createSpace: payload => after(call('create-space', payload)),
+    updateSpace: (id, patch) => after(call('update-space', { id, ...patch })),
+    deleteSpace: id => after(call('delete-space', { id })),
+    checkSpacePin: (id, pin) => call('check-space-pin', { id, pin }),
+    send: (sessionId, text) => after(call('send', { sessionId: partFor(sessionId), text })),
+    answerQuestion: (sessionId, questionId, answer) => after(call('answer-question', { sessionId: partFor(sessionId), questionId, answer })),
+    dismissQuestion: sessionId => after(call('dismiss-question', { sessionId })),
+    answerApproval: (id, choice) => after(call('approval-answer', { id, choice })),
+    stopMemberWork: (roomId, botId) => after(call('stop-member-work', { roomId, botId })),
+    // Values go out in these requests and never come back in a response.
+    secretSet: payload => after(call('secret-set', payload)),
+    secretAllow: requestId => after(call('secret-allow', { requestId })),
+    secretCancel: requestId => after(call('secret-cancel', { requestId })),
+    secretUpdate: (name, scope) => after(call('secret-update', { name, scope })),
+    secretDelete: name => after(call('secret-delete', { name })),
+    pairMint: () => after(call('pair-mint')),
+    gemLoginList: bot => call('gemlogin-list', { bot }).catch((error) => { console.warn('[ds-bot] gemlogin list', error); return [] }),
+    gemLoginShot: (bot, profile) => call('gemlogin-shot', { bot, profile }).catch(() => ({ image: null })),
+    gemLoginShow: (bot, profile, show) => call('gemlogin-show', { bot, profile, show }).catch(() => ({ ok: false })),
+    gemLoginClick: (bot, profile, fx, fy) => call('gemlogin-click', { bot, profile, fx, fy }).catch(() => ({ ok: false })),
+    chromiumList: bot => call('chromium-list', { bot }).catch((error) => { console.warn('[ds-bot] chromium list', error); return [] }),
+    chromiumShot: (bot, session) => call('chromium-shot', { bot, session }).catch(() => ({ image: null })),
+    chromiumShow: (bot, session, show) => call('chromium-show', { bot, session, show }).catch(() => ({ ok: false })),
+    chromiumClick: (bot, session, fx, fy) => call('chromium-click', { bot, session, fx, fy }).catch(() => ({ ok: false })),
+    connectorConnect: (id, token) => after(call('connector-connect', { id, token })),
+    connectorDisconnect: id => after(call('connector-disconnect', { id })),
+    connectorRetry: id => after(call('connector-retry', { id })),
+    zaloStart: botId => after(call('zalo-start', { botId })),
+    zaloCancel: () => after(call('zalo-cancel')),
+    zaloLogout: botId => after(call('zalo-logout', { botId })),
+    zaloReconnect: botId => after(call('zalo-reconnect', { botId })),
+    zaloBind: (botId, uid) => after(call('zalo-bind', { botId, uid })),
+    zaloThreads: botId => call('zalo-threads', { botId }),
+    zaloThreadMode: (botId, thread) => after(call('zalo-thread-mode', { botId, ...thread })),
+    telegramConnect: (botId, token) => after(call('telegram-connect', { botId, token })),
+    telegramDisconnect: botId => after(call('telegram-disconnect', { botId })),
+    telegramReconnect: botId => after(call('telegram-reconnect', { botId })),
+    saveCapability: capability => after(call('capability-save', capability)),
+    deleteCapability: name => after(call('capability-delete', { name })),
+    approveCapability: name => after(call('capability-approve', { name })),
+    setBotCapability: (botId, name, attached) => after(call('bot-capability', { botId, name, attached })),
+    schedules: () => call('schedules'),
+    scheduleCreate: task => call('schedule-create', task),
+    scheduleDelete: (sessionId, id) => call('schedule-delete', { sessionId, id }),
+    exchange: (a, b) => call('exchange', { a, b }).catch(() => []),
+    exchangeText: id => call('exchange-text', { id }).catch(() => undefined),
+    fileText: file => call('file-text', { file }).catch(() => undefined),
+    roomProgress: roomId => call('room-progress', { roomId }).catch(() => []),
+    earlier: (sessionId, cursor) => call('earlier', { sessionId, cursor: cursor ?? null }),
+    // Hours come back in this browser's time zone, so days start at local midnight.
+    usage: () => call('usage', { timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
+    // `summarize` starts a summary when the entries changed; `regenerate` always does.
+    memoryView: (botId, flags = {}) => call('memory-view', { botId, ...flags }),
+    memoryAsk: (botId, text) => call('memory-ask', { botId, text }),
+    memoryForget: (botId, entry) => call('memory-forget', { botId, scope: entry.scope, topic: entry.topic, text: entry.text }),
+    diagnostics: payload => call('diagnostics', payload),
+    diagnosticsLog: () => call('diagnostics-log'),
+    diagnosticsClear: () => call('diagnostics-clear'),
+    // A failed action away from any form (a menu, the palette) shows as a toast.
+    reportError: (error, where = 'action') => {
+      noteClientError(where, error)
+      ui.set(state => ({ ...state, toast: { text: error?.message ?? String(error), token: Date.now() } }))
+    },
+    dismissToast: token => ui.set(state => (state.toast && (token === undefined || state.toast.token === token) ? { ...state, toast: null } : state)),
   }
   // Without the Desktop bridge these stay undefined, and no browser control renders.
   if (browsers) {
@@ -727,6 +824,38 @@ export function apply(ctx) {
   const browserTabs = browsers?.tabs ?? createSource({})
   const browserHolds = browsers?.holds ?? createSource({})
   const face = () => ({ actions, hooks: { roster, ui, activity, work, memoryNews, registry, turnClock, live, cards, heldCards, browserPages, browserTabs, browserHolds, surface, update, frame, sidebarPref } })
+  // On a phone the open sidebar is a drawer over the chat; a tap on the scrim
+  // outside it closes it, and is swallowed so it cannot also hit what is under.
+  ctx.effect(() => {
+    const onDown = (event) => {
+      if (!isPhone() || !drawerOpen()) return
+      const column = layoutFrame()?.querySelector(':scope > [class*="_sidebarCol"]')
+      if (!column || column.contains(event.target)) return
+      event.preventDefault()
+      event.stopPropagation()
+      const swallow = (next) => { next.preventDefault(); next.stopPropagation() }
+      window.addEventListener('pointerup', swallow, { capture: true, once: true })
+      window.addEventListener('click', swallow, { capture: true, once: true })
+      actions.toggleSidebar()
+    }
+    window.addEventListener('pointerdown', onDown, true)
+    // Escape joins the overlay stack so it pops the drawer only when nothing newer
+    // (a menu, the details pane) is open above it.
+    let release = null
+    const syncEscape = () => {
+      const open = isPhone() && drawerOpen()
+      if (open && !release) release = addEscapeLayer(() => actions.toggleSidebar())
+      else if (!open && release) { release(); release = null }
+    }
+    const observer = new MutationObserver(syncEscape)
+    observer.observe(document.body, { subtree: true, attributeFilter: ['data-sidebar-collapsed'] })
+    syncEscape()
+    return () => {
+      window.removeEventListener('pointerdown', onDown, true)
+      observer.disconnect()
+      release?.()
+    }
+  }, 'ds-bot: drawer scrim')
   ctx.effect(() => noticeApprovals({
     work,
     roster,
@@ -921,15 +1050,21 @@ export function apply(ctx) {
     () => installCompiledStyles(ABOUT_CSS, 'about'),
     () => installCompiledStyles(MEMBER_CSS, 'members'),
     () => installCompiledStyles(GOAL_CSS, 'goal'),
+    () => installCompiledStyles(SENDING_CSS, 'sending'),
     () => installCompiledStyles(USER_MESSAGE_CSS, 'user-messages'),
     () => installCompiledStyles(WIDGET_CSS, 'widgets'),
     () => installCompiledStyles(HANDOFF_CSS, 'handoff'),
     () => installCompiledStyles(SIDE_CSS, 'side'),
     // Strip and panel styles also serve the side-chat tabs, which need no bridge.
     () => installCompiledStyles(BROWSER_CSS, 'browser'),
+    // Last, so its phone-width rules win ties against the blocks above.
+    () => installCompiledStyles(MOBILE_CSS, 'mobile'),
     () => installFrameWatch(frame),
     () => installFrameSync(),
     () => installTheme(),
+    // The drawer's way in on a phone. It sits in the shell group so a plain
+    // Session inside the Bot surface keeps it too.
+    () => shadow('conversation.header.leading', { priority: BOT_PRIORITY, inject: face }, DrawerButton),
     () => shadow('sidebar.workspaces', { priority: BOT_PRIORITY, inject: face }, TeamSidebar),
     () => shadow('sidebar.brand.mark', { priority: BOT_PRIORITY }, BrandMark),
     () => shadow('sidebar.brand.name', { priority: BOT_PRIORITY }, BrandName),
@@ -962,6 +1097,9 @@ export function apply(ctx) {
     // sits on that turn's tail, ahead of the time separator.
     () => shadow('conversation.chat.turnTail', { id: 'bot-btw', order: 800, priority: BOT_PRIORITY, inject: face }, BtwTurnTail),
     () => shadow('conversation.chat.turnTail', { id: 'bot-learning', order: 850, priority: BOT_PRIORITY, inject: face }, LearningTurnTail),
+    // A delivered file's card previews it in the Sidebar or opens it on the Host;
+    // the download button saves it through the browser instead.
+    () => shadow('deliverables.file.actions', { id: 'bot-file-download' }, DownloadFileAction),
     // A Bot condenses its conversation without telling anyone; the chat keeps showing
     // every message.
     () => shadow('conversation.chat.node', { key: 'question-reply', priority: BOT_PRIORITY, locale: 'chat' }, AnsweredReply),
@@ -990,6 +1128,7 @@ export function apply(ctx) {
     () => shadow('conversation.input.dock', { id: 'bot-view', order: -95, inject: face }, WidgetDock),
     () => shadow('conversation.input.dock', { id: 'bot-secret', order: -90, inject: face }, SecretDock),
     () => shadow('conversation.input.dock', { id: 'bot-handoff', order: -85, inject: face }, HandoffDock),
+    () => shadow('conversation.input.dock', { id: 'bot-sending', order: -80, inject: face }, SendingDock),
     () => shadow('conversation.input.dock', { id: 'bot-learning', order: 850, priority: BOT_PRIORITY, inject: face }, LearningDock),
   ]
   // The return button belongs to neither group: it renders only in Agent mode.
