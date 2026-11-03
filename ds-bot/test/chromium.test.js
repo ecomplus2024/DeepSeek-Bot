@@ -41,7 +41,7 @@ function start({ config = {}, browser, probe = () => undefined, download = fakeD
   writeFileSync(join(home, 'state.json'), JSON.stringify(TEAM))
   const ctx = fakeContext({})
   const launch = async (options) => { launches.push(options); return browser ?? fakeBrowser() }
-  const rt = createRuntime(ctx, { home, chromium: { launch, probe, download }, ...config })
+  const rt = createRuntime(ctx, { home, wake: false, chromium: { launch, probe, download }, ...config })
   const stop = async () => {
     await ctx.dispose()
     try { rmSync(home, { recursive: true, force: true, maxRetries: 5 }) } catch { /* a late home write keeps the dir */ }
@@ -159,7 +159,7 @@ test('a dead browser relaunches on the same profile', async (t) => {
   writeFileSync(join(home, 'state.json'), JSON.stringify(TEAM))
   const ctx = fakeContext({})
   const launch = async (options) => { launches.push(options); return browsers.shift() }
-  const rt = createRuntime(ctx, { home, chromium: { launch, probe: () => undefined, download: fakeDownload() } })
+  const rt = createRuntime(ctx, { home, wake: false, chromium: { launch, probe: () => undefined, download: fakeDownload() } })
   t.after(async () => {
     await ctx.dispose()
     try { rmSync(home, { recursive: true, force: true, maxRetries: 5 }) } catch { /* a late home write keeps the dir */ }

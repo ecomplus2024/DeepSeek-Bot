@@ -131,7 +131,7 @@ function start(t, home) {
     route = options
     return register(options)
   }
-  rt = createRuntime(ctx, { home })
+  rt = createRuntime(ctx, { home, wake: false })
   t.after(() => ctx.dispose())
   const call = async (endpoint, payload) => (await route.fetch(new Request('http://localhost/api/bot', { method: 'POST', body: JSON.stringify({ endpoint, payload }) }))).json()
   call.ctx = ctx

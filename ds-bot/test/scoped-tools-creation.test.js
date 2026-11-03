@@ -145,7 +145,7 @@ const start = (team = TEAM, services = {}, globals = [], shared = {}) => {
   let route
   const register = ctx.connection.fetch.register
   ctx.connection.fetch.register = (options) => { route = options; return register(options) }
-  rt = createRuntime(ctx, { home })
+  rt = createRuntime(ctx, { home, wake: false })
   const call = async (endpoint, payload) => (await route.fetch(new Request('http://localhost/api/bot', {
     method: 'POST', body: JSON.stringify({ endpoint, payload }),
   }))).json()

@@ -110,7 +110,7 @@ function start({ team = TEAM, secrets } = {}) {
   let route
   const register = ctx.connection.fetch.register
   ctx.connection.fetch.register = (options) => { route = options; return register(options) }
-  const rt = createRuntime(ctx, { home, telegram: { fetch: telegram.fetchImpl } })
+  const rt = createRuntime(ctx, { home, wake: false, telegram: { fetch: telegram.fetchImpl } })
   const call = async (endpoint, payload) =>
     (await route.fetch(new Request('http://localhost/api/bot', { method: 'POST', body: JSON.stringify({ endpoint, payload }) }))).json()
   const emit = async (sessionId, event) => {
@@ -390,7 +390,7 @@ test('config.telegram false leaves the tool and the pollers out', async () => {
   const home = mkdtempSync(join(tmpdir(), 'ds-bot-telegram-off-'))
   writeFileSync(join(home, 'state.json'), JSON.stringify(TEAM))
   const ctx = fakeContext()
-  const rt = createRuntime(ctx, { home, telegram: false })
+  const rt = createRuntime(ctx, { home, wake: false, telegram: false })
   try {
     assert.ok(!ctx.calls.includes('tool telegram_send'))
     assert.ok(!ctx.calls.includes('effect ds-bot: telegram'))

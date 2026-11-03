@@ -45,7 +45,7 @@ async function start(home) {
     sessionTitle: { rename: async () => {} },
     sessions: { flush: async () => {} },
   })
-  const rt = createRuntime(ctx, { home })
+  const rt = createRuntime(ctx, { home, wake: false })
   const pushes = []
   rt.pushNote = (kind, note) => { pushes.push({ kind, ...note }) }
   await rt.load()

@@ -174,7 +174,7 @@ async function setup({ state = team(), scripts = [], gate = false, messages, seq
   let route
   const register = ctx.connection.fetch.register
   ctx.connection.fetch.register = (options) => { route = options; return register(options) }
-  const rt = createRuntime(ctx, { home, github: false, diagnosticsFile: false })
+  const rt = createRuntime(ctx, { home, wake: false, github: false, diagnosticsFile: false })
   let notices = 0
   const saved = rt.stateSaved
   rt.stateSaved = () => { notices += 1; saved?.() }

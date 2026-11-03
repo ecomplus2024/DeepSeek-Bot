@@ -169,7 +169,7 @@ function start({ home = mkdtempSync(join(tmpdir(), 'ds-bot-memory-')), replies =
     route = options
     return register(options)
   }
-  rt = createRuntime(ctx, { home, ...config })
+  rt = createRuntime(ctx, { home, wake: false, ...config })
   const call = async (endpoint, payload) => {
     const response = await route.fetch(new Request('http://localhost/api/bot', { method: 'POST', body: JSON.stringify({ endpoint, payload }) }))
     return response.json()

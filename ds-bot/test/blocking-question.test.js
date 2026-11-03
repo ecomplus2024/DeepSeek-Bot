@@ -87,7 +87,7 @@ async function setup({ served = ['read', 'ask_user', QUESTION], goals, throwOn }
     sessionTitle: { rename: async () => {} },
     sessions: { flush: async () => {} },
   })
-  const rt = createRuntime(ctx, { home, github: false, diagnosticsFile: false })
+  const rt = createRuntime(ctx, { home, wake: false, github: false, diagnosticsFile: false })
   await rt.load()
   const guard = (name, sessionId) => ctx.guards.map(check => check({ name, agent: sessionId === undefined ? undefined : { id: sessionId } })).find(reason => reason !== undefined)
   const hiddenIn = id => hidden.filter(([sessionId, deny]) => sessionId === id && deny.includes(QUESTION))

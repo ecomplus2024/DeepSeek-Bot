@@ -96,7 +96,7 @@ function start({ team = TEAM, served } = {}) {
     sessions: { messageProjections: [] },
     workspaceRegistry: { archiveSession: async () => {} },
   })
-  const rt = createRuntime(ctx, { home })
+  const rt = createRuntime(ctx, { home, wake: false })
   const hook = pattern => ctx.listeners.get('llm/stream').find(listener => pattern.test(String(listener)))
   const stop = async () => {
     await ctx.dispose()

@@ -43,7 +43,7 @@ function start({ config = {}, browser } = {}) {
   const ctx = fakeContext({})
   const calls = []
   const connect = async () => browser ?? fakeBrowser()
-  const rt = createRuntime(ctx, { home, gemlogin: { url: 'http://gem.test', fetch: fakeGemLogin(calls), connect }, ...config })
+  const rt = createRuntime(ctx, { home, wake: false, gemlogin: { url: 'http://gem.test', fetch: fakeGemLogin(calls), connect }, ...config })
   const stop = async () => {
     await ctx.dispose()
     try { rmSync(home, { recursive: true, force: true, maxRetries: 5 }) } catch { /* a late home write keeps the dir */ }
@@ -223,7 +223,7 @@ test('gemlogin_open waits out the app\'s "being opened" state', async (t) => {
   const home = mkdtempSync(join(tmpdir(), 'ds-bot-gem-'))
   writeFileSync(join(home, 'state.json'), JSON.stringify(TEAM))
   const ctx = fakeContext({})
-  const rt = createRuntime(ctx, { home, gemlogin: { url: 'http://gem.test', fetch, connect: async () => browser } })
+  const rt = createRuntime(ctx, { home, wake: false, gemlogin: { url: 'http://gem.test', fetch, connect: async () => browser } })
   t.after(async () => {
     await ctx.dispose()
     try { rmSync(home, { recursive: true, force: true, maxRetries: 5 }) } catch { /* a late home write keeps the dir */ }

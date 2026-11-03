@@ -117,7 +117,7 @@ function start({ lib, team, secrets } = {}) {
   let route
   const register = ctx.connection.fetch.register
   ctx.connection.fetch.register = (options) => { route = options; return register(options) }
-  const rt = createRuntime(ctx, { home, zalo: { import: async () => lib ?? zalo.lib } })
+  const rt = createRuntime(ctx, { home, wake: false, zalo: { import: async () => lib ?? zalo.lib } })
   const call = async (endpoint, payload) =>
     (await route.fetch(new Request('http://localhost/api/bot', { method: 'POST', body: JSON.stringify({ endpoint, payload }) }))).json()
   const emit = async (sessionId, event) => {

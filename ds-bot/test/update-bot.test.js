@@ -51,7 +51,7 @@ function start(team = TEAM, { served } = {}) {
   let route
   const register = ctx.connection.fetch.register
   ctx.connection.fetch.register = (options) => { route = options; return register(options) }
-  rt = createRuntime(ctx, { home })
+  rt = createRuntime(ctx, { home, wake: false })
   const tool = (name, args, sessionId) => rt.teamTools.find(d => d.name === name).execute(args, { agent: { id: sessionId } })
   const call = async (endpoint, payload) => (await route.fetch(new Request('http://localhost/api/bot', { method: 'POST', body: JSON.stringify({ endpoint, payload }) }))).json()
   const state = () => JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))

@@ -108,7 +108,7 @@ async function start({ services = {}, workspaces = [], llm, team: saved = TEAM, 
     route = options
     return register(options)
   }
-  rt = createRuntime(ctx, { home, ...config })
+  rt = createRuntime(ctx, { home, wake: false, ...config })
   const call = async (endpoint, payload) => (await route.fetch(new Request('http://localhost/api/bot', {
     method: 'POST', body: JSON.stringify({ endpoint, payload }),
   }))).json()

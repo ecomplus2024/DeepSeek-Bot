@@ -69,7 +69,7 @@ async function setup({ state = team(), secret, beforeLoad } = {}) {
   const mcpPlugin = { name: 'mcp-client', apply() {} }
   const loader = { import: async () => ({ default: mcpPlugin }), unwrapExports: exports => exports.default }
   const ctx = fakeContext({ services: { loader } })
-  rt = createRuntime(ctx, { home, github: false, diagnosticsFile: false })
+  rt = createRuntime(ctx, { home, wake: false, github: false, diagnosticsFile: false })
   ctx.sessionTitle = { rename: async () => {} }
   rt.resolveAgent = async sessionId => ({ session: { id: sessionId } })
   beforeLoad?.({ ctx, rt, mounts, skills, mcpPlugin })

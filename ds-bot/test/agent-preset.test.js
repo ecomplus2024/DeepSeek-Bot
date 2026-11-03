@@ -45,7 +45,7 @@ function start({ presets } = {}) {
     },
     sessionTitle: { rename: async () => {} },
   })
-  const rt = createRuntime(ctx, { home, github: false, diagnosticsFile: false })
+  const rt = createRuntime(ctx, { home, wake: false, github: false, diagnosticsFile: false })
   const relay = ctx.listeners.get('llm/stream').find(listener => /relayOrPass/.test(String(listener)))
   const warnings = []
   const warn = rt.warn

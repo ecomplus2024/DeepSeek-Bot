@@ -81,7 +81,7 @@ function start({ config = {}, ops, calls, answers = FOUND } = {}) {
   writeFileSync(join(home, 'state.json'), JSON.stringify(TEAM))
   const ctx = fakeContext({ services: { attachments: fakeAttachments() } })
   const state = { fill: 0 }
-  const rt = createRuntime(ctx, { home, computer: { driver: fakeDriver(ops ?? [], state), fetch: fakeTypeSafe(calls ?? [], answers), key: 'ts-test-key', ...config } })
+  const rt = createRuntime(ctx, { home, wake: false, computer: { driver: fakeDriver(ops ?? [], state), fetch: fakeTypeSafe(calls ?? [], answers), key: 'ts-test-key', ...config } })
   const stop = async () => {
     await ctx.dispose()
     try { rmSync(home, { recursive: true, force: true, maxRetries: 5 }) } catch { /* a late write keeps the dir */ }
@@ -268,7 +268,7 @@ test('finding without the key names the secret to request', async (t) => {
   const home = mkdtempSync(join(tmpdir(), 'ds-bot-computer-'))
   writeFileSync(join(home, 'state.json'), JSON.stringify(TEAM))
   const ctx = fakeContext({ services: { attachments: fakeAttachments() } })
-  const rt = createRuntime(ctx, { home, computer: { driver: fakeDriver(ops), fetch: fakeTypeSafe([], {}) } })
+  const rt = createRuntime(ctx, { home, wake: false, computer: { driver: fakeDriver(ops), fetch: fakeTypeSafe([], {}) } })
   t.after(async () => {
     await ctx.dispose()
     try { rmSync(home, { recursive: true, force: true, maxRetries: 5 }) } catch { /* a late write keeps the dir */ }
@@ -282,7 +282,7 @@ test('the tool is absent outside the Desktop profile', async (t) => {
   const home = mkdtempSync(join(tmpdir(), 'ds-bot-computer-'))
   writeFileSync(join(home, 'state.json'), JSON.stringify(TEAM))
   const ctx = fakeContext({})
-  const rt = createRuntime(ctx, { home })
+  const rt = createRuntime(ctx, { home, wake: false })
   t.after(async () => {
     await ctx.dispose()
     try { rmSync(home, { recursive: true, force: true, maxRetries: 5 }) } catch { /* a late write keeps the dir */ }
@@ -336,7 +336,7 @@ test('a TypeSafe failure answers in words', async (t) => {
   const home = mkdtempSync(join(tmpdir(), 'ds-bot-computer-'))
   writeFileSync(join(home, 'state.json'), JSON.stringify(TEAM))
   const ctx = fakeContext({ services: { attachments: fakeAttachments() } })
-  const rt = createRuntime(ctx, { home, computer: { driver: fakeDriver(ops), fetch: failing, key: 'k' } })
+  const rt = createRuntime(ctx, { home, wake: false, computer: { driver: fakeDriver(ops), fetch: failing, key: 'k' } })
   t.after(async () => {
     await ctx.dispose()
     try { rmSync(home, { recursive: true, force: true, maxRetries: 5 }) } catch { /* a late write keeps the dir */ }

@@ -98,7 +98,7 @@ async function start({ services = {}, privateBot = true, archives, memberPick = 
     route = options
     return register(options)
   }
-  rt = createRuntime(ctx, { home, github: false, diagnosticsFile: false })
+  rt = createRuntime(ctx, { home, wake: false, github: false, diagnosticsFile: false })
   const call = async (endpoint, payload) => (await route.fetch(new Request('http://localhost/api/bot', {
     method: 'POST', body: JSON.stringify({ endpoint, payload }),
   }))).json()

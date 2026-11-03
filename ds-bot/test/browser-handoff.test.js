@@ -42,7 +42,7 @@ function start() {
     route = options
     return register(options)
   }
-  const rt = createRuntime(ctx, { home, browser: true })
+  const rt = createRuntime(ctx, { home, wake: false, browser: true })
   rt.ensureCapabilities = async sessionId => { ensured.push(sessionId) }
   rt.resolveAgent = async sessionId => ({
     session: { id: sessionId },
