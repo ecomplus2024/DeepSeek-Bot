@@ -38,6 +38,10 @@ const AVATAR_PARAM = {
   description: 'Profile picture: a local image path (a relative path starts in your working folder) or a data URL. PNG, JPEG, WebP, or GIF; square, 256x256 recommended, up to 120 KB. Images are not resized.',
 }
 const WORKING_DIRECTORY_TOOL = 'working_directory'
+const SPACE_PARAM = { type: 'string', description: 'Sidebar space to file this under, from list_bots; "none" ungroups it' }
+
+// A tool arg naming a space: "none" clears the assignment, anything else must match.
+const spaceArg = value => (/^(none|ungrouped|无|没有)$/i.test(String(value ?? '').trim()) ? null : value)
 
 export function install(rt) {
   const { ctx, state } = rt
@@ -58,6 +62,7 @@ export function install(rt) {
       room.workDir ? `members work in ${room.workDir} here` : '',
       room.permission ? `members work with the ${room.permission} permissions here` : '',
       room.goal !== undefined ? `goal: "${room.goal.title}" (${room.goal.status}${room.goal.status === 'active' || room.goal.status === 'paused' ? `, stage ${Math.min(room.goal.current + 1, room.goal.stages.length)}/${room.goal.stages.length}` : ''})` : '',
+      state.spaces[room.space] ? `filed under space "${state.spaces[room.space].name}"` : '',
     ].filter(Boolean)
     return `- "${room.name}" — ${parts.join('; ')}`
   }
@@ -76,19 +81,21 @@ export function install(rt) {
         // A private Bot is only named to the others: not what it does, where, or what now.
         if (bot.private === true && bot.id !== self) return `- ${bot.name} (${[bot.role, 'private Bot, closed to other Bots'].filter(Boolean).join(', ')})`
         const model = bot.appliedModel ?? bot.model
-        const tags = [bot.role, model ? `model ${model}` : '', bot.workDir ? `works in ${bot.workDir}` : '', rt.isMain(bot.id) ? 'Main Bot' : '', bot.private === true ? 'private' : '', bot.id === self ? 'you' : ''].filter(Boolean).join(', ')
+        const tags = [bot.role, model ? `model ${model}` : '', bot.workDir ? `works in ${bot.workDir}` : '', state.spaces[bot.space] ? `space "${state.spaces[bot.space].name}"` : '', rt.isMain(bot.id) ? 'Main Bot' : '', bot.private === true ? 'private' : '', bot.id === self ? 'you' : ''].filter(Boolean).join(', ')
         const job = bot.instructions ? ` — ${bot.instructions.split('\n')[0].slice(0, 120)}` : ''
         const now = bot.id === self ? '' : `\n  now: ${rt.statusOf(bot.id)}`
         return `- ${bot.name}${tags ? ` (${tags})` : ''}${job}${now}`
       })
       if (lines.length === 0) return 'No Bots yet.'
       const rooms = visibleRooms(self)
+      const spaces = Object.values(state.spaces)
       return [
         'Bots:',
         ...lines,
         '',
         rooms.length === 0 ? 'Group chats: none you can see.' : 'Group chats:',
         ...rooms.map(room => roomLine(room, self)),
+        ...(spaces.length > 0 ? ['', `Spaces: ${spaces.map(space => `"${space.name}"`).join(', ')}`] : []),
       ].join('\n')
     },
   }))
@@ -320,6 +327,8 @@ export function install(rt) {
       effort: { type: 'string', description: 'Thinking level for the model, as list_bot_models shows it. Only when the user names one.' },
       work_dir: WORK_DIR_PARAM,
       avatar: AVATAR_PARAM,
+      image_model: { type: 'string', description: 'The model that reads images for the Bot; its own model is tried first when left out' },
+      space: SPACE_PARAM,
     },
     output,
     async execute(args, exec) {
@@ -337,8 +346,8 @@ export function install(rt) {
         const served = new Set((await rt.catalog()).filter(entry => entry.needsKey !== true).map(entry => entry.ref))
         const fallback = [state.prefs.defaultBotModel, creator?.model].find(ref => ref && served.has(ref))
         const model = args.model || fallback
-        const bot = await rt.createBot({ ...args, avatar: avatar === undefined ? undefined : { image: avatar }, model, workDir, effort: args.effort, createdBy: creator?.id })
-        return `Created ${bot.name}${workDir ? `, working in ${workDir}` : ''}. It is greeting the user now.`
+        const bot = await rt.createBot({ ...args, avatar: avatar === undefined ? undefined : { image: avatar }, model, workDir, effort: args.effort, space: spaceArg(args.space), ...(typeof args.image_model === 'string' && args.image_model !== '' ? { imageModel: args.image_model } : {}), createdBy: creator?.id })
+        return `Created ${bot.name}${workDir ? `, working in ${workDir}` : ''}${state.spaces[bot.space] ? `, filed under "${state.spaces[bot.space].name}"` : ''}. It is greeting the user now.`
       } catch (error) {
         return `Could not create the Bot: ${error.message}`
       }
@@ -347,7 +356,7 @@ export function install(rt) {
 
   rt.teamTools.push(defineTool({
     name: 'update_bot',
-    description: 'Change a Bot\'s name, role, color, profile picture, model, thinking level, working folder, or instructions. Every Bot may change itself; only a Main Bot may change another Bot.',
+    description: 'Change a Bot\'s name, role, color, profile picture, model, thinking level, image model, working folder, or instructions. Every Bot may change itself; only a Main Bot may change another Bot.',
     parameters: {
       bot: { type: 'string', description: 'Current name of the Bot to change; leave out to change yourself' },
       name: { type: 'string', description: 'New name' },
@@ -357,7 +366,9 @@ export function install(rt) {
       avatar: { ...AVATAR_PARAM, description: `${AVATAR_PARAM.description} An empty string removes the photo and shows the Bot's character again.` },
       model: { type: 'string', description: 'Move the Bot to another model, as provider/model or a model id' },
       effort: { type: 'string', description: 'Thinking level for the Bot\'s model, as list_bot_models shows; an empty string returns to the model\'s default' },
+      image_model: { type: 'string', description: 'The model that reads images for the Bot; an empty string clears it and its own model is tried first' },
       work_dir: { ...WORK_DIR_PARAM, description: `${WORK_DIR_PARAM.description}; an empty string returns it to the team workspace` },
+      space: SPACE_PARAM,
     },
     output,
     async execute(args, exec) {
@@ -369,7 +380,7 @@ export function install(rt) {
       if (bot === undefined) return `No Bot named ${args.bot}.`
       if (bot.id !== caller.id && !rt.isMain(self)) return 'Only a Main Bot can change another Bot. Leave out bot to change yourself, or ask a Main Bot with message_bot.'
       try {
-        const { name: newName, role, instructions, color, model, effort } = args
+        const { name: newName, role, instructions, color, model, effort, image_model } = args
         let image
         if (args.avatar !== undefined) {
           const input = typeof args.avatar === 'string' ? args.avatar.trim() : args.avatar
@@ -382,7 +393,7 @@ export function install(rt) {
         // does: setting one keeps a custom character, and clearing removes only the image.
         // They are read here, after the waits above, so a change made meanwhile stays.
         const avatar = image === undefined ? undefined : { ...rt.botOf(bot.id)?.avatar, image }
-        const next = await rt.updateBot(bot.id, { name: newName, role, instructions, color, ...(avatar !== undefined ? { avatar } : {}), ...(model ? { model } : {}), ...(effort === undefined ? {} : { effort }), ...(moving ? { workDir: workDir ?? '' } : {}) }, self, exec.agent?.id)
+        const next = await rt.updateBot(bot.id, { name: newName, role, instructions, color, ...(avatar !== undefined ? { avatar } : {}), ...(model ? { model } : {}), ...(effort === undefined ? {} : { effort }), ...(typeof image_model === 'string' ? { imageModel: image_model } : {}), ...(moving ? { workDir: workDir ?? '' } : {}), ...(typeof args.space === 'string' ? { space: spaceArg(args.space) } : {}) }, self, exec.agent?.id)
         if (!moving) return `Updated ${next.name}.`
         const folder = workDir ?? 'the team workspace'
         return bot.id === caller.id ? `Updated ${next.name}. From your next step on, you work in ${folder}.` : `Updated ${next.name}. It now works in ${folder}.`
@@ -485,6 +496,7 @@ export function install(rt) {
       notice: { type: 'string', description: 'Shared instructions every member reads before speaking in this group; at most 2000 characters' },
       admin: { type: 'string', description: 'Member who leads the group; defaults to you' },
       mode: MODE_PARAM,
+      space: SPACE_PARAM,
     },
     output,
     async execute(args, exec) {
@@ -497,7 +509,7 @@ export function install(rt) {
       if (admin === undefined) return `No Bot named ${args.admin}. Team: ${teamNames()}`
       const members = [...new Set([self, ...bots.map(bot => bot.id), admin.id])]
       try {
-        const room = await rt.createRoom({ members, name: args.name, notice: args.notice, mode: args.mode, admin: admin.id, createdBy: self })
+        const room = await rt.createRoom({ members, name: args.name, notice: args.notice, mode: args.mode, admin: admin.id, space: spaceArg(args.space), createdBy: self })
         return `Created group "${room.name}" with ${room.members.map(id => rt.botOf(id).name).join(', ')}. ${admin.id === self ? 'You are' : `${admin.name} is`} its admin. It is in the user's sidebar; use post_to_group to start a discussion there.`
       } catch (error) {
         return `Could not create the group: ${error.message}`
@@ -517,6 +529,7 @@ export function install(rt) {
       admin: { type: 'string', description: 'Member to make the admin; "none" leaves the group without one (Main Bots only)' },
       mode: MODE_PARAM,
       work_dir: { ...WORK_DIR_PARAM, description: `${WORK_DIR_PARAM.description}. Every member works there in this group; an empty string lets each member work in its own folder again (Main Bots only)` },
+      space: { ...SPACE_PARAM, description: `${SPACE_PARAM.description} (Main Bots only)` },
     },
     output,
     async execute(args, exec) {
@@ -527,6 +540,7 @@ export function install(rt) {
       if (error) return error
       const moving = typeof args.work_dir === 'string'
       if (moving && !rt.isMain(self)) return `Only a Main Bot can set the folder of "${room.name}".`
+      if (typeof args.space === 'string' && !rt.isMain(self)) return `Only a Main Bot can set the space of "${room.name}".`
       const add = resolveBots(args.add_members)
       const remove = resolveBots(args.remove_members)
       const unknown = [...add.unknown, ...remove.unknown]
@@ -558,6 +572,7 @@ export function install(rt) {
           add: add.bots.map(bot => bot.id),
           remove: remove.bots.map(bot => bot.id),
           ...(moving ? { workDir: workDir ?? '' } : {}),
+          ...(typeof args.space === 'string' ? { space: spaceArg(args.space) } : {}),
         }, self)
         return changes.length === 0 ? `Nothing changed in "${next.name}".` : `Updated "${next.name}": ${changes.join('; ')}.`
       } catch (failure) {
@@ -580,6 +595,66 @@ export function install(rt) {
       if (rt.roomBusy(room.id)) return `"${room.name}" is in the middle of a round. Delete it after the round ends.`
       await rt.deleteRoom(room.id)
       return `Deleted "${room.name}". Its history is archived.`
+    },
+  }))
+
+  rt.teamTools.push(defineTool({
+    name: 'create_space',
+    description: 'Main Bot only. Create a sidebar space that groups Bots and group chats; it only organizes the user\'s list and changes nothing else.',
+    parameters: {
+      name: { type: 'string', required: true, description: 'Space name, e.g. "Engineering" or "Sales"' },
+      color: { type: 'string', description: `One of ${[...COLORS, ...EXTRA_COLORS].join(', ')}` },
+    },
+    output,
+    async execute(args, exec) {
+      await rt.load()
+      if (!rt.isMain(rt.selfOf(exec.agent?.id))) return 'Only a Main Bot can create spaces.'
+      try {
+        const space = await rt.createSpace({ name: args.name, color: args.color })
+        return `Created the "${space.name}" space. File Bots and group chats under it with update_bot or update_group.`
+      } catch (error) {
+        return `Could not create the space: ${error.message}`
+      }
+    },
+  }))
+
+  rt.teamTools.push(defineTool({
+    name: 'update_space',
+    description: 'Main Bot only. Rename a space or change its color.',
+    parameters: {
+      space: { type: 'string', required: true, description: 'Current space name from list_bots' },
+      name: { type: 'string', description: 'New name' },
+      color: { type: 'string', description: `One of ${[...COLORS, ...EXTRA_COLORS].join(', ')}` },
+    },
+    output,
+    async execute(args, exec) {
+      await rt.load()
+      if (!rt.isMain(rt.selfOf(exec.agent?.id))) return 'Only a Main Bot can change spaces.'
+      const space = rt.findSpace(args.space)
+      if (space === undefined) return `No space named ${args.space}.`
+      try {
+        const next = await rt.updateSpace(space.id, { name: args.name, color: args.color })
+        return `Updated the "${next.name}" space.`
+      } catch (error) {
+        return `Could not update the space: ${error.message}`
+      }
+    },
+  }))
+
+  rt.teamTools.push(defineTool({
+    name: 'delete_space',
+    description: 'Main Bot only. Delete a space; the Bots and group chats under it go back to ungrouped. Only when the user asks.',
+    parameters: {
+      space: { type: 'string', required: true, description: 'Space name from list_bots' },
+    },
+    output,
+    async execute(args, exec) {
+      await rt.load()
+      if (!rt.isMain(rt.selfOf(exec.agent?.id))) return 'Only a Main Bot can delete spaces.'
+      const space = rt.findSpace(args.space)
+      if (space === undefined) return `No space named ${args.space}.`
+      await rt.deleteSpace(space.id)
+      return `Deleted the "${space.name}" space. Its Bots and group chats are ungrouped; nothing else was removed.`
     },
   }))
 
@@ -697,6 +772,7 @@ export function install(rt) {
         ...(args.allowCustom === true ? { allowCustom: true } : {}),
         askedAt: Date.now(),
       }
+      rt.pushWait?.('question', { id: state.questions[id].id, botId: rt.chatOwners.get(id) ?? rt.groupOwners.get(id)?.botId, sessionId: id })
       await rt.save()
       exec.concludeTurn?.()
       return 'The card is on screen; the user\'s answer arrives as their next message.'

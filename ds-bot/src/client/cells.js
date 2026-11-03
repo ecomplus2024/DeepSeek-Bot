@@ -23,6 +23,8 @@ import { heldCardKey } from './sources.js'
 import { BtwCardView } from './btw.js'
 import { partIndexOf, withBtwRows } from './btw-model.js'
 import { layoutOf, thinkingShown } from './themes.js'
+import { FileChip } from './user-message.js'
+import { usePhone } from './mobile.js'
 
 export { clockLabel }
 
@@ -138,6 +140,7 @@ function MessageTools({ text, name, sessionId, react, actions, open: tapped }) {
   // (on-screen keyboard) while the popover is open.
   const [panel, setPanel] = useState(null)
   const [copied, setCopied] = useState(false)
+  const phone = usePhone()
   const tools = useRef(null)
   const pop = useRef(null)
   const tick = useViewport()
@@ -168,9 +171,9 @@ function MessageTools({ text, name, sessionId, react, actions, open: tapped }) {
     react ? h('button', { type: 'button', className: 'bt-tool', 'aria-label': t('Add reaction'), title: t('Add reaction'), 'aria-expanded': panel?.kind === 'react', onClick: event => open('react', event) }, h(SmileIcon)) : null,
     sessionId ? h('button', { type: 'button', className: 'bt-tool', 'aria-label': t('Reply'), title: t('Reply'), onClick: () => actions.quote(sessionId, text) }, h(ReplyIcon)) : null,
     h('button', { type: 'button', className: 'bt-tool', 'aria-label': t('More message actions'), title: t('More'), 'aria-haspopup': 'menu', 'aria-expanded': panel?.kind === 'more', onClick: event => open('more', event) }, copied ? h(CheckIcon) : h(DotsIcon)),
-    panel?.kind === 'react' ? createPortal(h('div', { ref: pop, className: 'bt-react-strip', role: 'menu', 'aria-label': t('Reactions'), style: place },
+    panel?.kind === 'react' ? createPortal(h('div', { ref: pop, className: `bt-react-strip${phone ? ' bt-sheet' : ''}`, role: 'menu', 'aria-label': t('Reactions'), style: phone ? undefined : place },
       REACTIONS.map(emoji => h('button', { key: emoji, type: 'button', role: 'menuitem', 'aria-label': emoji, onClick: () => { close(); react(emoji) } }, emoji))), document.body) : null,
-    panel?.kind === 'more' ? createPortal(h('div', { ref: pop, className: 'bt-menu', role: 'menu', 'aria-label': t('Message actions'), style: place },
+    panel?.kind === 'more' ? createPortal(h('div', { ref: pop, className: `bt-menu${phone ? ' bt-sheet' : ''}`, role: 'menu', 'aria-label': t('Message actions'), style: phone ? undefined : place },
       item(t('Copy'), CopyIcon, copy), item(t('Download'), DownloadIcon, download)), document.body) : null)
 }
 
@@ -358,7 +361,8 @@ function scheduleGroupChains(flow) {
 // One Bot message inside a group chat: avatar, name (with its group role), when it ran
 // and how long it took, bubble. The flat layout moves the avatar from beside the last
 // bubble to the head of the name row, so the text below runs the whole width.
-function GroupMessage({ bot, text, texts = [text], room, roster, actions, msgKey, useUi, whole, time, duration }) {
+// `file`: the post went past what a message holds, so it is also a stored file.
+function GroupMessage({ bot, text, texts = [text], room, roster, actions, msgKey, useUi, whole, time, duration, file }) {
   const ref = useRef(null)
   useLayoutEffect(() => {
     const el = ref.current
@@ -377,7 +381,8 @@ function GroupMessage({ bot, text, texts = [text], room, roster, actions, msgKey
       room?.admin === bot.id ? h('span', { className: 'bt-group-role' }, t('Admin')) : null,
       Number.isFinite(time) ? h('span', { className: 'bt-group-time', title: clockLabel(time) }, messageClock(time)) : null,
       took ? h('span', { className: 'bt-group-took', title: t('Ran for {duration}', { duration: took }) }, took) : null),
-    h(Bubbles, { texts, roster, selfId: bot.id, actions, sessionId: room?.id, msgKey, useUi, lead: flat ? null : lead, whole }))
+    h(Bubbles, { texts, roster, selfId: bot.id, actions, sessionId: room?.id, msgKey, useUi, lead: flat ? null : lead, whole }),
+    file ? h(FileChip, { file }) : null)
 }
 
 // A centered event line that names a group chat and opens it.
@@ -665,7 +670,8 @@ export function TriggerCell({ node, sessionId, useRoster, useSessions, useTurnCl
       // A part opens with its handoff package, so the earlier parts go right above it.
       if (source.handoff === true) return h(EarlierParts, { sessionId, roster, actions })
       // Group turns belong to the group chat; the member's own chat stays one-to-one.
-      if (source.role === 'kickoff' || source.role === 'room' || source.role === 'goal') return null
+      // Zalo traffic lives in Zalo — its trigger chips stay out of the chat too.
+      if (source.role === 'kickoff' || source.role === 'room' || source.role === 'goal' || source.role === 'zalo') return null
       // The secret card itself shows what the user did; the note to the Bot stays out.
       if (source.role === 'secret' || deferred) return null
       // A profile notice is the user's edit landing in the Bot's chat, not a peer
@@ -684,7 +690,7 @@ export function TriggerCell({ node, sessionId, useRoster, useSessions, useTurnCl
         const text = stripHeader(contentText(data.content))
         // A trigger's data carries no turn; its event seq is the one durable name of this post.
         return h(GroupMessage, {
-          bot: poster, text: file ? stripLongNote(text) : text, room, roster, actions, msgKey: `${sessionId}:post:${data.seq ?? node.key}`, useUi, time: data.time,
+          bot: poster, text: file ? stripLongNote(text) : text, room, roster, actions, msgKey: `${sessionId}:post:${data.seq ?? node.key}`, useUi, time: data.time, file,
           whole: file ? { length: source.length, load: () => actions.fileText(file) } : undefined,
         })
       }

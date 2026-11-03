@@ -33,6 +33,13 @@ const hook = (make) => {
 const effects = []
 const react = {
   createElement: (type, props, ...children) => ({ type, props: { ...props, children } }), Fragment: Symbol('Fragment'),
+  createContext: (initial) => {
+    const ctx = { value: initial }
+    ctx.Provider = ({ value, children }) => { ctx.value = value; return children }
+    return ctx
+  },
+  useContext: ctx => ctx.value,
+  useCallback: fn => fn,
   useState(initial) {
     const slot = hook(() => ({ v: typeof initial === 'function' ? initial() : initial }))
     return [slot.v, (v) => { slot.v = typeof v === 'function' ? v(slot.v) : v }]

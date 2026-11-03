@@ -14,7 +14,7 @@ const Tick = ({ on }) => h('span', { className: 'bt-model-tick', 'aria-hidden': 
 // gets the chosen path, or '' for that default. `team` is the menu for the team workspace
 // itself, which has no default.
 export function FolderMenu({ value, group = false, team = false, actions, run, onPick, wide = false, disabled = false }) {
-  const { isOpen, shownPlace, leaving, button, menu, open, close } = useAnchoredMenu()
+  const { isOpen, shownPlace, leaving, button, menu, open, close, sheet } = useAnchoredMenu()
   const [info, setInfo] = useState(null)
   const [view, setView] = useState('list')
   const [draft, setDraft] = useState('')
@@ -90,7 +90,7 @@ export function FolderMenu({ value, group = false, team = false, actions, run, o
       h('span', { className: 'bt-model-name' }, value ? folderName(value) : fallback),
       value ? h('span', { className: 'bt-model-provider' }, value) : null),
     h(Caret)),
-    shownPlace ? createPortal(h('div', { ref: menu, className: `bt-menu bt-model-menu bt-folder-menu${shownPlace.bottom !== undefined ? ' bt-menu-up' : ''}`, role: 'menu', 'aria-label': team ? t('Team workspace') : t('Working folder'), style: shownPlace, 'data-leaving': leaving || undefined },
+    shownPlace ? createPortal(h('div', { ref: menu, className: `bt-menu bt-model-menu bt-folder-menu${sheet ? ' bt-sheet' : shownPlace.bottom !== undefined ? ' bt-menu-up' : ''}`, role: 'menu', 'aria-label': team ? t('Team workspace') : t('Working folder'), style: sheet ? undefined : shownPlace, 'data-leaving': leaving || undefined },
       shownView,
       problem ? h('div', { className: 'bt-folder-error', role: 'alert' }, problem) : null), document.body) : null)
 }

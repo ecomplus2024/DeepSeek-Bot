@@ -46,6 +46,9 @@
 | [上下文与记忆](2026-10-09-context-and-memory.md) | 对话分段、上下文管家（压缩还是换段）、交接包、`read_own_chat`；记忆的存放、格式、权限、整理和冻结 |
 | [Bot 运行配置](2026-10-10-bot-runtime.md) | Agent 预设、每个 Bot 的模型和思考强度、工作文件夹、能力（MCP、技能、能力包） |
 | [AGENTS.md 维护](2026-10-27-agents-md-upkeep.md) | 从项目工作中审阅持久规则；用户批准后才原子写入 |
+| [Zalo 连接器](2026-10-18-zalo.md) | Bot 绑定 Zalo 个人号：扫码登录、thread 的 talk/watch/off 模式、`zalo_send`/`zalo_read` 工具 |
+| [手机界面与 PWA](2026-10-18-mobile-pwa.md)（草案） | 窄屏布局（抽屉、全屏页、底部 sheet）、manifest 与 service worker、Web Push 等用户介入的事 |
+| [空间](2026-10-21-spaces.md)（草案） | 把 Bot 和群按部门分节展示：侧栏分节、空间管理、跨空间协作照旧；只做整理不做隔离 |
 | [长消息](2026-10-16-long-messages.md) | state.json 只存开头；超过 2 万字的 Bot 消息转成 DSH 文件；成员和界面怎么读全文 |
 | [桌面应用](2026-10-16-desktop-app.md) | 壳、引擎和界面怎么分；锁定的 DSH 版本、独立的数据位置、首次启动和导入、插件怎么兼容 DSH、安装和更新 |
 | [Bot 之间派活](2026-10-16-bot-handoffs.md) | Bot 看得到对方的状态；没读的消息合成一条；派活树：下面的活交回后才往上交，不许发给在等结果的 Bot；不设总量和链长上限 |
@@ -57,3 +60,9 @@
 | [启动页文案](2026-10-29-start-copy.md) | 启动页和壳里系统对话框的字：按页面位置分层，每层一条写法规则；`text.mjs` 一张表、旧键到新键的对照、扫全表的测试 |
 | [手机 App](2026-10-24-mobile-app.md) | iOS 和 Android 远程操控电脑上的 Bot 团队：手机不跑 Agent；扫码配对、端到端加密、电脑只往外连；完整功能，高权限操作要解锁手机 |
 | [Office 文档](2026-10-27-office-documents.md) | Bot 离线处理 .docx/.pptx/.xlsx：应用带的 payload、`office.js` 命令行、office 路由换成带 `office-tools` 的版本 |
+| [GemLogin 浏览器（Bot 驱动）](2026-10-18-gemlogin.md) | Bot 驱动 GemLogin 指纹浏览器：开 profile、按动作序列驱动，自带代理、指纹和 cookie；面板浏览器仍只归用户操作 |
+| [Chromium 浏览器（Bot 驱动）](2026-10-19-chromium.md) | Bot 自有的 Chromium：按名字开 session（系统浏览器或现下载 Chrome for Testing），与 GemLogin 完全相同的动作集合 |
+| [电脑控制](2026-10-18-computer-control.md) | `use_computer`：真实鼠标键盘（SendInput/CGEvent/xdotool），截屏即坐标系，按名字定位走 TypeSafe Box+Noul，一次一个 Bot 驾驶 |
+| [Linux 桌面包](2026-10-21-linux-app-package.md) | Linux 只出两个包：AppImage 主包（唯一支持自更新）加 deb 兜底；文件名用 linux-x86_64 / linux-amd64 |
+| [头像库](2026-10-23-avatar-library.md) | 可复用的自定义头像：照片导入一次、多个 Bot 共用；批量导入部分成功 |
+| [记忆恢复](2026-11-01-memory-restore.md) | 记忆改动可撤销：journal.jsonl 每行可逆操作，记忆面板的变更历史里一键 Undo |

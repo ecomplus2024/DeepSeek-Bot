@@ -11,6 +11,8 @@ export const STORAGE = {
   browserWidth: 'ds-bot:browser-width',
   sidebar: 'ds-bot:sidebar',
   browsers: 'ds-bot.browser.v2',
+  spaces: 'ds-bot:spaces',
+  spaceUnlocks: 'ds-bot:space-unlocks',
 }
 
 // Newest legacy name first: when both exist, the more recent value wins.

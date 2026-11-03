@@ -207,10 +207,14 @@ test('a corrupt agents field resets instead of crashing the view', async (t) => 
 })
 
 test('TEAM_TOOLS names exactly the tools ds-bot defines for Bot sessions', async (t) => {
-  // read_browser exists only in the Desktop profile; the flag stands in for it.
-  const { stop } = start(TEAM, { config: { browser: true } })
+  // read_browser and use_computer register only in the Desktop profile; the flags
+  // stand in for it.
+  const { stop, ctx } = start(TEAM, { config: { browser: true, computer: true } })
   t.after(stop)
-  assert.deepEqual(rt.teamTools.map(d => d.name).sort(), [...TEAM_TOOLS].sort())
+  // Most team tools are scoped onto each Bot session; the connector tools register
+  // globally, so a Bot session sees those without scoping. Together they are TEAM_TOOLS.
+  const served = [...new Set([...rt.teamTools.map(d => d.name), ...ctx.registeredTools.keys()])].sort()
+  assert.deepEqual(served, [...TEAM_TOOLS].sort())
 })
 
 test('agent-session honors a known workspace and falls back to the team workspace', async (t) => {
@@ -246,7 +250,7 @@ test('agent-adopt takes an unowned Session and refuses team-owned ones', async (
 })
 
 test('a Bot Session gets the team tools in its own scope; a DSH Agent Session gets none', async (t) => {
-  const { call, stop, restricted, scoped, createdAgents } = start(TEAM)
+  const { call, stop, restricted, scoped, createdAgents, ctx } = start(TEAM)
   t.after(stop)
   await call('state', {})
   // A Bot resolving its agent gets every team tool scoped to it and no mask.
@@ -263,8 +267,12 @@ test('a Bot Session gets the team tools in its own scope; a DSH Agent Session ge
     },
   })
   await flush()
-  assert.deepEqual(scoped.filter(entry => entry.sessionId === 'm1').map(entry => entry.name).sort(),
-    [...TEAM_TOOLS].filter(name => name !== 'read_browser').sort())
+  // The scope carries the scoped team tools; the connector tools are global, so
+  // the session sees those without scoping.
+  const onScope = scoped.filter(entry => entry.sessionId === 'm1').map(entry => entry.name).sort()
+  assert.deepEqual(onScope, rt.teamTools.map(d => d.name).sort())
+  assert.deepEqual([...new Set([...onScope, ...ctx.registeredTools.keys()])].sort(),
+    [...TEAM_TOOLS].filter(name => name !== 'read_browser' && name !== 'use_computer').sort())
   assert.equal(restricted.length, 0)
   // An Agent Session is a plain dsh conversation: nothing is scoped onto it and
   // nothing is masked, because the team tools never reach the global layer.

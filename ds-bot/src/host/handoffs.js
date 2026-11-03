@@ -8,7 +8,7 @@
 import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { TEXT_KEPT } from './constants.js'
+import { TEXT_KEPT, WORK_NUDGE_SPINS } from './constants.js'
 import { headOf } from './text.js'
 
 const minutes = since => {
@@ -91,17 +91,35 @@ export function install(rt) {
   }
 
   // The work a turn does: the request it answers, or the work a result that came back
-  // (or a turn picked up again) goes on with.
+  // (or a turn picked up again) goes on with. A Zalo ask is such a work too: its
+  // exchange names the record its `zalo` route sits on (zalo.js).
   const workOf = info => (info === undefined ? undefined
-    : info.role === 'request' && info.audience !== 'user' ? info.exchangeId : info.work)
+    : info.role === 'request' && info.audience !== 'user' ? info.exchangeId
+    : info.work ?? (works()[info.exchangeId]?.zalo !== undefined ? info.exchangeId : undefined))
 
   // `parent`: the work the sender was doing when it sent this one. `child`: the
   // session id of the subagent a run of this work belongs to — the run, not the
   // child, is the sub-work, so a child that is continued hands up a result per run.
-  function openWork(id, { from, to, parent, fromRoom, room, name, child }) {
+  // `zalo`: the thread a Zalo ask came from — work handed on for it inherits the
+  // route back there.
+  function openWork(id, { from, to, parent, fromRoom, room, name, child, zalo }) {
     const above = parent === undefined ? undefined : works()[parent]
-    works()[id] = { ...(from ? { from } : {}), ...(to ? { to } : {}), ...(room ? { room } : {}), ...(above ? { parent } : {}), ...(fromRoom ? { fromRoom } : {}), ...(name ? { name } : {}), ...(child ? { child } : {}), open: [], results: [], at: Date.now() }
-    if (above !== undefined) above.open.push(id)
+    const route = zalo ?? above?.zalo
+    works()[id] = { ...(from ? { from } : {}), ...(to ? { to } : {}), ...(room ? { room } : {}), ...(above ? { parent } : {}), ...(fromRoom ? { fromRoom } : {}), ...(name ? { name } : {}), ...(child ? { child } : {}), ...(route !== undefined ? { zalo: route } : {}), open: [], results: [], at: Date.now() }
+    if (above !== undefined) {
+      above.open.push(id)
+      // Each hand-on is churn under every asker up the tree: past the note line that
+      // Bot gets woken to look, then again each time the count doubles — a nudge the
+      // waiting Bot cannot give itself, not a limit on the work.
+      for (let up = parent; up !== undefined && works()[up] !== undefined; up = works()[up].parent) {
+        const waiting = works()[up]
+        waiting.spins = (waiting.spins ?? 0) + 1
+        if (waiting.from !== undefined && waiting.spins === (waiting.nudgeAt ?? WORK_NUDGE_SPINS)) {
+          waiting.nudgeAt = waiting.spins * 2
+          void nudge(up, waiting).catch(error => rt.warn('ds-bot: work note to %s failed: %s', waiting.from, error))
+        }
+      }
+    }
     save()
   }
 
@@ -216,9 +234,10 @@ export function install(rt) {
     save()
   }
   // Who asked for the work, as the turn that answers a request sees its trigger.
+  // A Zalo ask has no Bot sender: its `zalo` route takes the answer instead.
   const askedBy = workId => {
     const work = works()[workId]
-    return work === undefined ? undefined : { kind: 'bot', role: 'request', exchangeId: workId, senderSessionId: work.from, ...(work.fromRoom ? { senderRoomId: work.fromRoom } : {}) }
+    return work === undefined ? undefined : { kind: 'bot', role: 'request', exchangeId: workId, ...(work.from !== undefined ? { senderSessionId: work.from } : {}), ...(work.fromRoom ? { senderRoomId: work.fromRoom } : {}), ...(work.zalo !== undefined ? { zalo: work.zalo } : {}) }
   }
   // The answer that goes up: what the Bot said last for this work, then what came back.
   function answerText(workId, reply, botName) {
@@ -234,6 +253,21 @@ export function install(rt) {
       : [said || `${botName} finished and wrote nothing more.`, `[Handed back to ${botName} for this work]`, ...results].join('\n\n')
     // The request reached its target only after a restart; the answer says so.
     return work?.late === true ? `[This request reached ${botName} only after DeepSeek Harness restarted.]\n\n${body}` : body
+  }
+
+  // The note that wakes the asking Bot: a turn of its own to check the work, steer or
+  // stop it, or report. It is no exchange and owes no reply.
+  async function nudge(id, work) {
+    if (rt.botOf(work.from) === undefined) return
+    const target = work.room !== undefined ? `the post in group "${rt.roomOf(work.room)?.name ?? 'a group'}"` : (nameOf(work.to) ?? 'a teammate')
+    const asked = state.exchanges?.find(entry => entry.id === id)?.text
+    const quote = asked === undefined ? '' : ` You asked: "${headOf(asked, 160)}${asked.length > 160 ? '…' : ''}".`
+    const stop = rt.isMain?.(work.from) ? ', stop it with stop_bot' : ''
+    await rt.deliver({
+      toId: work.from,
+      role: 'note',
+      text: `The work you handed to ${target} has passed through ${work.spins} messages between Bots and has not come back.${quote} If it is not going as it should: call list_bots to see who holds it, steer it with message_bot${stop}, or tell the user. If it is on track, ignore this — the next note comes only after twice as many.`,
+    })
   }
 
   // The Bots waiting for the result of these works: whoever asked for each, and on up.

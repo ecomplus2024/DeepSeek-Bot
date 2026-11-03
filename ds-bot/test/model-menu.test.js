@@ -9,24 +9,31 @@ const bundle = await build({
   bundle: true, format: 'cjs', platform: 'node', write: false,
   external: ['react', 'react-dom', '@deepseek-ai/dsh-client-ui-primitives'],
 })
-const module = { exports: {} }
-runInNewContext(bundle.outputFiles[0].text, {
-  module, exports: module.exports,
-  require: name => {
-    const platform = {
-      react: { Fragment: 'fragment', createContext: (initial) => { const ctx = { value: initial }; ctx.Provider = ({ value, children }) => { ctx.value = value; return children }; return ctx }, useContext: ctx => ctx.value, useMemo: make => make(), useCallback: fn => fn, useId: () => 'dv-id', useSyncExternalStore: (subscribe, getSnapshot) => getSnapshot(), 
-        createElement: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity) }),
-        useState: initial => [initial, () => {}],
-        useEffect: () => {},
-      },
-      'react-dom': {},
-      '@deepseek-ai/dsh-client-ui-primitives': {},
-    }
-    if (!(name in platform)) throw new Error(`no platform module ${name}`)
-    return platform[name]
-  },
-})
-const { groupModels, ModelChoiceDock, ModelKeyCard, effortRows } = module.exports
+// The bundle is evaluated once per page address, since the plugin asks `location`
+// whether the page is on the machine running DSH.
+function load(hostname) {
+  const module = { exports: {} }
+  runInNewContext(bundle.outputFiles[0].text, {
+    module, exports: module.exports,
+    ...(hostname === undefined ? {} : { location: { hostname } }),
+    require: name => {
+      const platform = {
+        react: { Fragment: 'fragment', createContext: (initial) => { const ctx = { value: initial }; ctx.Provider = ({ value, children }) => { ctx.value = value; return children }; return ctx }, useContext: ctx => ctx.value, useMemo: make => make(), useCallback: fn => fn, useId: () => 'dv-id', useSyncExternalStore: (subscribe, getSnapshot) => getSnapshot(),
+          createElement: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity) }),
+          useState: initial => [initial, () => {}],
+          useEffect: () => {},
+        },
+        'react-dom': {},
+        '@deepseek-ai/dsh-client-ui-primitives': {},
+      }
+      if (!(name in platform)) throw new Error(`no platform module ${name}`)
+      return platform[name]
+    },
+  })
+  return module.exports
+}
+const { groupModels, ModelChoiceDock, ModelKeyCard, effortRows } = load()
+const { ModelChoiceDock: remoteDock } = load('bot.itask.vn')
 
 function nodes(tree, match) {
   if (!tree || typeof tree !== 'object') return []
@@ -99,8 +106,26 @@ test('an empty catalog offers setup choices, and a ready model needs no choice d
 
 test('without DSH\'s own settings, the choice offers no way into them', () => {
   const buttons = tree => nodes(tree, node => node.type === 'button').map(button => button.children[0])
-  assert.deepEqual(buttons(dock(models, { harness: false }).tree), ['DeepSeek Flash', 'DeepSeek Pro', 'DeepSeek Flash'])
-  assert.deepEqual(buttons(dock([], { harness: false }).tree), [])
+  // Over the network DSH's own settings are out of reach, so without the host's
+  // own entries nothing leads into them; the served models stay pickable.
+  const remote = (list, actions = {}) => remoteDock({
+    sessionId: 'chief',
+    useRoster: select => select({ ready: true, byId: { chief: { id: 'chief', name: 'Chief' } }, models: list, defaultModel: list[0]?.ref }),
+    actions,
+  })
+  assert.deepEqual(buttons(remote(models)), ['DeepSeek Flash', 'DeepSeek Pro', 'DeepSeek Flash'])
+  assert.deepEqual(buttons(remote([])), [])
+})
+// DSH keeps its settings document on the Host only for a page opened there; over a
+// tunnel its Models page cannot read the providers, so the dock says where they live.
+test('a page opened over the network says where providers are set, and keeps the served models', () => {
+  const bot = { id: 'chief', name: 'Chief' }
+  const roster = { ready: true, byId: { chief: bot }, models, defaultModel: models[0].ref }
+  const tree = remoteDock({ sessionId: bot.id, useRoster: select => select(roster), actions: {} })
+  assert.equal(nodes(tree, node => node.type === 'button' && node.children.includes('Manage models')).length, 0)
+  const note = nodes(tree, node => node.props.className === 'bt-model-note')[0]
+  assert.match(note.children[0], /127\.0\.0\.1:3080/)
+  assert.equal(nodes(tree, node => node.props.className === 'bt-model-choice-group').length, 2)
 })
 
 test('the Thinking section always offers Default, so a picked level can be cleared', () => {
@@ -118,7 +143,9 @@ const keyless = [
 
 test('models that need an API key are no choice', () => {
   const buttons = tree => nodes(tree, node => node.type === 'button').map(button => button.children[0])
-  assert.deepEqual(buttons(dock([...keyless, models[1]], { harness: false }).tree), ['DeepSeek Flash'])
+  // The Manage-models entry is no model choice: only the served keyless-free model is picked.
+  const served = buttons(dock([...keyless, models[1]], { harness: false }).tree).filter(label => typeof label === 'string')
+  assert.deepEqual(served, ['DeepSeek Flash'])
   // Without the host's key endpoint, DSH's own settings take the key.
   assert.deepEqual(buttons(dock(keyless).tree), ['Enter a DeepSeek API key', 'Open settings to set up a custom model'])
 })

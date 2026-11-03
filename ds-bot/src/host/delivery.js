@@ -25,8 +25,11 @@ export function install(rt) {
     if (resumed && role !== 'room') return `[Message from ${fromName} · DeepSeek Harness restarted while you were working on it]`
     if (resent && role === 'reply') return `[Reply from ${fromName} · DeepSeek Harness restarted before it could reach you]`
     if (resent && role !== 'room') return `[Message from ${fromName} · DeepSeek Harness restarted before it could reach you]`
+    if (role === 'note') return '[Team note]'
     if (role === 'reply') return `[Reply from ${fromName}${goesOn}]`
     if (role === 'stopped') return `[Stopped by ${fromName}]`
+    if (role === 'zalo') return `[Zalo · ${note}]`
+    if (role === 'telegram') return `[Telegram · ${note}]`
     if (role === 'room') return `[Group chat "${roomName}" · ${note}]`
     if (role === 'report') return `[Group chat "${roomName}" · replies to your post${goesOn}]`
     if (role === 'kickoff') return '[Bot team setup]'
@@ -51,11 +54,13 @@ export function install(rt) {
   // `askedBy` is the member whose @mention called a group turn (groups.js).
   // `fromRoomId`: the group whose Session the sender wrote from; the reply goes back
   // to that Session (turns.js). `files` go along as file blocks, which DSH turns into
-  // a read-only path the recipient's tools can read. `length`: the whole message's
-  // length when it went as a file (attachLong). `work`: the work (handoffs.js) a
-  // result that came back goes on with. `merged`: a request that takes in an earlier
-  // one its recipient had not read, under that one's exchange.
-  async function deliver({ fromId, toId, sessionId, text, role, replyTo, roomId, audience, note, exchangeId = randomUUID(), steer = false, deferred = false, resumed = false, retried = false, resent = false, merged = false, askedBy, fromRoomId, files = [], length, work }) {
+  // a read-only path the recipient's tools can read. `images` go along as image
+  // blocks (Zalo photo messages need them; default `[]` keeps upstream callers
+  // working). `length`: the whole message's length when it went as a file
+  // (attachLong). `work`: the work (handoffs.js) a result that came back goes on
+  // with. `merged`: a request that takes in an earlier one its recipient had not
+  // read, under that one's exchange. `sender` overrides the name the header shows.
+  async function deliver({ fromId, toId, sessionId, text, role, replyTo, roomId, audience, note, exchangeId = randomUUID(), steer = false, deferred = false, resumed = false, retried = false, resent = false, merged = false, askedBy, fromRoomId, files = [], images = [], length, work, sender }) {
     const from = rt.botOf(fromId)
     const to = rt.botOf(toId)
     if (to === undefined) throw new Error(`Unknown Bot ${toId}`)
@@ -68,7 +73,7 @@ export function install(rt) {
       form: 'relay',
       role,
       exchangeId,
-      senderName: fromName,
+      senderName: sender ?? fromName,
       ...(work ? { work } : {}),
       ...(fromId ? { senderSessionId: fromId } : {}),
       ...(replyTo ? { replyTo } : {}),
@@ -88,6 +93,7 @@ export function install(rt) {
     const message = createUserMessage({
       content: [
         { type: 'text', text: `${headerFor(role, fromName, room?.name, audience, note, deferred, { resumed, retried, resent, asker })}\n${text}` },
+        ...images.map(attachment => ({ type: 'image', attachment })),
         ...files.map(attachment => ({ type: 'file', attachment })),
       ],
       source,

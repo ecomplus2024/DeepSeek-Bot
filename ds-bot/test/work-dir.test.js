@@ -35,7 +35,7 @@ const TEAM = {
 // starts in the team workspace unless it is made with a cwd. `services` are what
 // ctx.get finds, such as the sandbox policy and approvals.
 // `locked`: another dsh holds the team, so this one only shows it.
-async function start({ services = {}, workspaces = [], llm, team: saved = TEAM, locked = false, root: rootDir } = {}) {
+async function start({ services = {}, workspaces = [], llm, team: saved = TEAM, locked = false, root: rootDir, config = {} } = {}) {
   // The native realpath, as fs/promises uses: on Windows the JS one keeps 8.3 short names.
   const root = rootDir ?? realpathSync.native(mkdtempSync(join(tmpdir(), 'ds-bot-work-dir-')))
   mkdirSync(root, { recursive: true })
@@ -108,7 +108,7 @@ async function start({ services = {}, workspaces = [], llm, team: saved = TEAM, 
     route = options
     return register(options)
   }
-  rt = createRuntime(ctx, { home })
+  rt = createRuntime(ctx, { home, ...config })
   const call = async (endpoint, payload) => (await route.fetch(new Request('http://localhost/api/bot', {
     method: 'POST', body: JSON.stringify({ endpoint, payload }),
   }))).json()
@@ -131,7 +131,7 @@ async function start({ services = {}, workspaces = [], llm, team: saved = TEAM, 
   }
   // Loading once fills the Session-owner indexes.
   await tool('list_bots', {}, 'a')
-  return { ctx, root, dsh, home, team, project, created, archived, agentOf, call, tool, preStep, state, workingIn, stop }
+  return { ctx, rt, root, dsh, home, team, project, created, archived, agentOf, call, tool, preStep, state, workingIn, stop }
 }
 
 const settle = () => new Promise(resolve => setTimeout(resolve, 20))
@@ -603,6 +603,32 @@ test('a team copied from another DSH_HOME moves on to a fresh part in the folder
   assert.equal(agentOf('s1').session.header.cwd, root)
   await until(() => agentOf('s1').calls.length >= 2)
   assert.deepEqual(agentOf('s1').calls.map(([kind, message]) => [kind, message.source.role ?? textOf(message)]), [['followup', 'handoff'], ['followup', 'Hello again']])
+})
+
+test('an explicit config.workspace names the team folder; without it the home workspace applies', async (t) => {
+  const previous = process.env.DS_BOT_WORKSPACE
+  delete process.env.DS_BOT_WORKSPACE
+  t.after(() => {
+    if (previous === undefined) delete process.env.DS_BOT_WORKSPACE
+    else process.env.DS_BOT_WORKSPACE = previous
+  })
+  const picked = realpathSync.native(mkdtempSync(join(tmpdir(), 'ds-bot-config-workspace-')))
+  t.after(() => rmSync(picked, { recursive: true, force: true }))
+  const named = await start({ config: { workspace: picked } })
+  t.after(named.stop)
+  assert.equal(named.rt.defaultTeamFolder(), picked)
+  // A fresh team with no workspace lands in the named folder, not the home one.
+  const copied = { ...TEAM }
+  delete copied.workspaceId
+  const fresh = await start({ team: copied, config: { workspace: picked } })
+  t.after(fresh.stop)
+  const input = { id: 'm1', role: 'user', content: [{ type: 'text', text: 'Hello' }], source: { kind: 'user' } }
+  assert.deepEqual(await fresh.preStep('b', [input]), { kind: 'enter', messages: [] })
+  await until(() => fresh.state().bots.b.sessionId === 's1')
+  assert.equal(fresh.agentOf('s1').session.header.cwd, picked)
+  const plain = await start()
+  t.after(plain.stop)
+  assert.equal(plain.rt.defaultTeamFolder(), join(plain.home, 'workspace'))
 })
 
 test('the user moves the team workspace, and Bots without a folder of their own move on to a fresh part there at their next turn', async (t) => {

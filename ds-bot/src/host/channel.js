@@ -1,5 +1,8 @@
 // Client channel: the team view the browser renders, and the POST /api/bot endpoints.
 import { randomUUID } from 'node:crypto'
+import { createReadStream } from 'node:fs'
+import { stat } from 'node:fs/promises'
+import { isAbsolute, resolve } from 'node:path'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { install as installBtw } from './btw.js'
 import { install as installSide } from './side.js'
@@ -56,6 +59,9 @@ export function install(rt) {
     }),
     // Deleted private Bots whose folder, memory and chats stay closed to the others.
     privateArchives: rt.archivesView(),
+    // Sidebar labels that group Bots and group chats; an ordering aid, not a boundary.
+    // The PIN hash stays on the host; the client only learns whether a space locks.
+    spaces: Object.values(state.spaces).map(({ pin, ...space }) => ({ ...space, locked: pin !== undefined })),
     exchangeTurns: state.exchangeTurns,
     questions: state.questions,
     views: state.views ?? {},
@@ -98,6 +104,11 @@ export function install(rt) {
     learning: rt.learningView(),
     connectors: rt.connectorsView(),
     capabilityStatuses: rt.capabilityStatusesView(),
+    zalo: rt.zaloLive?.() ?? { bots: {}, accounts: [], login: null },
+    telegram: rt.telegramLive?.() ?? { bots: {} },
+    // The gate PIN shows only to browsers already past dsh auth — the gate never
+    // answers it: remote clients type what this side displays.
+    pair: rt.pairView?.() ?? { enabled: false },
   })
   // The live fields' sources are spread across the host with no single change
   // counter, so the serialized answer itself is the detector: a poll whose `live`
@@ -115,7 +126,7 @@ export function install(rt) {
   }
   // What a host that only reads the team may still answer.
   // Updates change the dsh profile, not the team, so a reading host may run them too.
-  const READS = new Set(['state', 'models', 'efforts', 'providers', 'provider-models', 'earlier', 'chat', 'run-stats', 'room-progress', 'exchange', 'exchange-text', 'file-text', 'usage', 'schedules', 'memory-view', 'browser-wait', 'browser-result', 'diagnostics', 'diagnostics-log', 'diagnostics-clear', 'update-check', 'update-install', 'dsh-update-install', 'repo-stars', 'approval-answer', 'thinking', 'avatar-library'])
+  const READS = new Set(['state', 'models', 'efforts', 'providers', 'provider-models', 'earlier', 'chat', 'run-stats', 'room-progress', 'exchange', 'exchange-text', 'file-text', 'usage', 'schedules', 'memory-view', 'browser-wait', 'browser-result', 'diagnostics', 'diagnostics-log', 'diagnostics-clear', 'update-check', 'update-install', 'dsh-update-install', 'repo-stars', 'approval-answer', 'thinking', 'avatar-library', 'zalo-status', 'telegram-status', 'push-key', 'pair-status', 'gemlogin-list', 'gemlogin-shot', 'chromium-list', 'chromium-shot'])
 
   async function setPrefs(body) {
     if (body.theme !== undefined) {
@@ -264,7 +275,7 @@ export function install(rt) {
         }
         case 'create-bot': {
           await rt.bootstrap()
-          const bot = await rt.createBot({ name: body.name, role: body.role, color: body.color, instructions: body.instructions, brief: body.brief, avatar: body.avatar, model: body.model, effort: body.effort, workDir: body.workDir })
+          const bot = await rt.createBot({ name: body.name, role: body.role, color: body.color, instructions: body.instructions, brief: body.brief, avatar: body.avatar, model: body.model, effort: body.effort, workDir: body.workDir, space: body.space })
           return ok(bot)
         }
         case 'update-bot':
@@ -305,7 +316,7 @@ export function install(rt) {
           return ok(view())
         case 'create-room': {
           await rt.load()
-          const room = await rt.createRoom({ members: Array.isArray(body.members) ? body.members : [], name: body.name, ...(typeof body.admin === 'string' ? { admin: body.admin } : {}) })
+          const room = await rt.createRoom({ members: Array.isArray(body.members) ? body.members : [], name: body.name, space: body.space, ...(typeof body.admin === 'string' ? { admin: body.admin } : {}) })
           if (body.greet === true) await rt.greetRoom(room.id).catch(error => rt.warn('ds-bot: greeting in %s failed: %s', room.name, error))
           return ok(room)
         }
@@ -321,6 +332,7 @@ export function install(rt) {
             remove: Array.isArray(body.remove) ? body.remove : undefined,
             workDir: body.workDir,
             permission: body.permission,
+            space: body.space,
           })
           return ok({ room: view().rooms.find(entry => entry.id === room.id), changes })
         }
@@ -359,6 +371,20 @@ export function install(rt) {
         case 'delete-room':
           await rt.load()
           await rt.deleteRoom(body.id)
+          return ok(view())
+        case 'create-space':
+          await rt.load()
+          return ok(await rt.createSpace(body))
+        case 'update-space':
+          await rt.load()
+          await rt.updateSpace(String(body.id ?? ''), body)
+          return ok(view())
+        case 'check-space-pin':
+          await rt.load()
+          return ok(rt.checkSpacePin(String(body.id ?? ''), String(body.pin ?? '')))
+        case 'delete-space':
+          await rt.load()
+          await rt.deleteSpace(String(body.id ?? ''))
           return ok(view())
         case 'approval-answer':
           rt.answerApproval(body.id, body.choice)
@@ -409,6 +435,48 @@ export function install(rt) {
         case 'connector-retry':
           await rt.load()
           return ok(await rt.connectorEndpoint(endpoint, body))
+        case 'zalo-status':
+          return ok(rt.zaloLive?.() ?? { bots: {}, login: null })
+        case 'push-key':
+        case 'push-subscribe':
+        case 'push-unsubscribe':
+          return ok(await rt.pushEndpoint?.(endpoint, body) ?? { enabled: false })
+        case 'pair-status':
+          return ok(rt.pairView?.() ?? { enabled: false })
+        case 'pair-mint':
+          return ok(rt.pairMint?.() ?? { enabled: false })
+        case 'gemlogin-list':
+          return ok(await rt.gemLoginList?.(body.bot) ?? [])
+        case 'gemlogin-shot':
+          return ok(await rt.gemLoginShot?.(body.bot, body.profile) ?? { image: null })
+        case 'gemlogin-show':
+          return ok(await rt.gemLoginShow?.(body.bot, body.profile, body.show === true) ?? { ok: false })
+        case 'gemlogin-click':
+          return ok(await rt.gemLoginClick?.(body.bot, body.profile, body.fx, body.fy) ?? { ok: false })
+        case 'chromium-list':
+          return ok(await rt.chromiumList?.(body.bot) ?? [])
+        case 'chromium-shot':
+          return ok(await rt.chromiumShot?.(body.bot, body.session) ?? { image: null })
+        case 'chromium-show':
+          return ok(await rt.chromiumShow?.(body.bot, body.session, body.show === true) ?? { ok: false })
+        case 'chromium-click':
+          return ok(await rt.chromiumClick?.(body.bot, body.session, body.fx, body.fy) ?? { ok: false })
+        case 'zalo-start':
+        case 'zalo-bind':
+        case 'zalo-cancel':
+        case 'zalo-logout':
+        case 'zalo-reconnect':
+        case 'zalo-threads':
+        case 'zalo-thread-mode':
+          await rt.load()
+          return ok(await rt.zaloEndpoint(endpoint, body))
+        case 'telegram-status':
+          return ok(rt.telegramLive?.() ?? { bots: {} })
+        case 'telegram-connect':
+        case 'telegram-disconnect':
+        case 'telegram-reconnect':
+          await rt.load()
+          return ok(await rt.telegramEndpoint(endpoint, body))
         case 'capability-save':
         case 'capability-delete':
         case 'capability-approve':
@@ -624,18 +692,105 @@ export function install(rt) {
     }
   }
 
-  // An exact Fetch route on the shared /api channel; the browser authenticates with its session cookie.
-  ctx.effect(() => ctx.connection.fetch.register({
-    path: ROUTE,
-    methods: ['POST'],
-    requestBody: 'buffered',
-    fetch: async (request) => {
-      let body
-      try { body = await request.json() } catch { body = {} }
-      const result = await handle(String(body?.endpoint ?? ''), body?.payload, request.signal)
-      return new Response(JSON.stringify(result), { status: 200, headers: { 'content-type': 'application/json' } })
-    },
-  }), 'ds-bot: api route')
+  // A file a turn presented is named by its Session event's coordinates — the same
+  // `sessionId`, `seq` and `index` the delivered-file card's action route carries,
+  // so the browser never has to read the Session to find the path. A path the event
+  // wrote relative resolves in the folder that Session works in.
+  const presentedRef = async (url, signal) => {
+    const sessionId = url.searchParams.get('sessionId') ?? ''
+    const seq = Number(url.searchParams.get('seq'))
+    const index = Number(url.searchParams.get('index'))
+    if (sessionId === '' || !Number.isSafeInteger(seq) || !Number.isSafeInteger(index) || index < 0 || typeof rt.eventsBackwards !== 'function') return undefined
+    const agent = await rt.resolveAgent(sessionId).catch(() => undefined)
+    if (agent === undefined) return undefined
+    let declared
+    try {
+      for await (const event of rt.eventsBackwards(sessionId, signal)) {
+        if (event.seq < seq) break
+        if (event.seq === seq && event.type === 'deliverables/presented') declared = event.data?.files?.[index]
+      }
+    } catch { return undefined }
+    const path = typeof declared?.path === 'string' && declared.path.trim() !== '' ? declared.path : undefined
+    if (path === undefined) return undefined
+    const cwd = rt.sessionFolder?.(agent.session)
+    const absolute = isAbsolute(path) ? path : (cwd === undefined ? undefined : resolve(cwd, path))
+    if (absolute === undefined) return undefined
+    const info = await stat(absolute).catch(() => undefined)
+    if (info === undefined || !info.isFile()) return undefined
+    return { path: absolute, name: absolute.split(/[\\/]/).filter(Boolean).at(-1) ?? 'file', bytes: info.size }
+  }
+
+  // A stored file (a Bot's long message, an upload, a turn's presented file) downloads
+  // over GET so the browser saves it as a file; the shared /api channel still checks
+  // the session cookie. The first chunk is read before the answer's status, so a
+  // missing file is a clean 404.
+  const fileResponse = async (request) => {
+    const url = new URL(request.url)
+    const id = url.searchParams.get('attachmentId') ?? ''
+    const attachments = ctx.get?.('attachments')
+    let ref
+    let iterator
+    if (id === '') {
+      ref = await presentedRef(url, request.signal)
+      if (ref === undefined) return new Response('No such file', { status: 404 })
+      iterator = createReadStream(ref.path)[Symbol.asyncIterator]()
+    } else {
+      if (attachments === undefined) return new Response('No such file', { status: 404 })
+      ref = {
+        attachmentId: id,
+        name: url.searchParams.get('name') || 'file',
+        bytes: Number(url.searchParams.get('bytes')) || 0,
+      }
+      try {
+        iterator = attachments.readFileStream(ref, request.signal)[Symbol.asyncIterator]()
+      } catch { return new Response('This file cannot be read here', { status: 404 }) }
+    }
+    let pending
+    try { pending = await iterator.next() } catch { return new Response('This file cannot be read here', { status: 404 }) }
+    const body = new ReadableStream({
+      async pull(controller) {
+        if (pending !== undefined) {
+          if (pending.done) { controller.close(); return }
+          controller.enqueue(pending.value)
+          pending = undefined
+        }
+        try {
+          const step = await iterator.next()
+          if (step.done) controller.close()
+          else controller.enqueue(step.value)
+        } catch (error) { controller.error(error) }
+      },
+      async cancel() { await iterator.return?.().catch(() => {}) },
+    })
+    const ascii = ref.name.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_')
+    return new Response(body, {
+      status: 200,
+      headers: {
+        'content-type': 'application/octet-stream',
+        'content-disposition': `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(ref.name).replace(/'/g, '%27')}`,
+        ...(ref.bytes > 0 ? { 'content-length': String(ref.bytes) } : {}),
+      },
+    })
+  }
+
+  // Exact Fetch routes on the shared /api channel; the browser authenticates with its
+  // session cookie. The file route registers first, so a test that keeps the last
+  // registered route still gets the POST one.
+  ctx.effect(() => {
+    const file = ctx.connection.fetch.register({ path: `${ROUTE}/file`, methods: ['GET'], requestBody: 'buffered', fetch: fileResponse })
+    const api = ctx.connection.fetch.register({
+      path: ROUTE,
+      methods: ['POST'],
+      requestBody: 'buffered',
+      fetch: async (request) => {
+        let body
+        try { body = await request.json() } catch { body = {} }
+        const result = await handle(String(body?.endpoint ?? ''), body?.payload, request.signal)
+        return new Response(JSON.stringify(result), { status: 200, headers: { 'content-type': 'application/json' } })
+      },
+    })
+    return async () => { await file(); await api() }
+  }, 'ds-bot: api route')
 
   ctx.effect(() => {
     void rt.load()

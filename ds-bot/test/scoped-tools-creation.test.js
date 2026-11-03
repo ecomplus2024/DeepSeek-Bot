@@ -179,12 +179,16 @@ const hasShowView = (host, id) => host.scoped.some(entry => entry.sessionId === 
 const denied = (host, id) => host.restricted.some(entry => entry.sessionId === id && entry.deny.includes('ask_user_question'))
 const scopedNames = (host, id) => host.scoped.filter(entry => entry.sessionId === id).map(entry => entry.name)
 
+// `read_browser` and `use_computer` only exist when their feature is on (the
+// Desktop profile / config), so a run without either serves the rest.
+const GATED = ['read_browser', 'use_computer']
+
 test('a Bot Session gets every team tool in its own scope', async (t) => {
   const host = start()
   t.after(host.stop)
   await host.call('state', {})
   await host.agentCreated('a')
-  assert.deepEqual(scopedNames(host, 'a').sort(), [...TEAM_TOOLS].filter(name => name !== 'read_browser').sort())
+  assert.deepEqual(scopedNames(host, 'a').sort(), [...TEAM_TOOLS].filter(name => !GATED.includes(name)).sort())
 })
 
 test('a Session ds-bot does not own sees none of the team tools', async (t) => {
@@ -370,7 +374,7 @@ test("a Bot's own Session the creation path missed gets the whole scope at the a
   await host.call('state', {})
   const agent = host.agentOf('a')
   const assembled = await assemble(host, agent, { tools: [{ name: 'read' }], sections: [] })
-  const expected = [...TEAM_TOOLS].filter(name => name !== 'read_browser').sort()
+  const expected = [...TEAM_TOOLS].filter(name => !GATED.includes(name)).sort()
   assert.deepEqual(scopedNames(host, 'a').sort(), expected)
   assert.deepEqual(assembled.tools.map(tool => tool.name).sort(), ['read', ...expected].sort())
   // The hidden DSH tools are masked and filtered as on the creation path: none

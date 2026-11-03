@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { format } from 'node:util'
 import { createRuntime } from '../index.js'
-import { fakeContext } from './fake-ctx.js'
+import { fakeAttachments, fakeContext } from './fake-ctx.js'
 
 // DSH's settings and credentials for a DeepSeek route that takes an API key. A key set
 // or removed is announced the way DSH announces it. `records` are the stored records
@@ -74,8 +74,10 @@ function start(team, { models = [], reasoning = {}, archiveError, keys, selectio
     sessions: { flush: async () => {} },
   })
   let route
+  const routes = new Map()
   const register = ctx.connection.fetch.register
   ctx.connection.fetch.register = (options) => {
+    routes.set(options.path, options)
     route = options
     return register(options)
   }
@@ -88,7 +90,7 @@ function start(team, { models = [], reasoning = {}, archiveError, keys, selectio
     await ctx.dispose()
     rmSync(home, { recursive: true, force: true, maxRetries: 5 })
   }
-  return { call, stop, home, sent, selected, ctx, archived, warnings, records }
+  return { call, stop, home, sent, selected, ctx, archived, warnings, records, routes }
 }
 
 const settle = () => new Promise(resolve => setTimeout(resolve, 20))
@@ -1379,4 +1381,127 @@ test('a model-less create-bot starts the Bot on the saved team default model', a
   await call('set-prefs', { defaultBotModel: null })
   const plain = (await call('create-bot', { name: 'Plain' })).value
   assert.equal(plain.model, 'deepseek/deepseek-v4-flash')
+})
+test('spaces group Bots and group chats; deleting one ungroups its members', async (t) => {
+  const { call, stop } = start(undefined, { models: ['deepseek-v4-flash'] })
+  t.after(stop)
+  const chief = (await call('state', {})).value.mainBotId
+  const eng = (await call('create-space', { name: 'Engineering', color: 'sky' })).value
+  assert.equal(eng.name, 'Engineering')
+  assert.equal((await call('state', {})).value.spaces.length, 1)
+  // A second space with the same name is refused, even in another case.
+  assert.equal((await call('create-space', { name: 'engineering' })).ok, false)
+  const writer = (await call('create-bot', { name: 'Writer', space: eng.id })).value
+  assert.equal(writer.space, eng.id)
+  const room = (await call('create-room', { members: [chief, writer.id], space: 'Engineering' })).value
+  assert.equal(room.space, eng.id)
+  // Space names resolve like ids; a name no space carries fails, null ungroups.
+  assert.equal((await call('update-bot', { id: writer.id, space: 'Nope' })).ok, false)
+  assert.equal((await call('update-bot', { id: writer.id, space: 'Engineering' })).value.space, eng.id)
+  assert.equal((await call('update-bot', { id: writer.id, space: null })).value.space, undefined)
+  const out = await call('update-room', { id: room.id, space: null })
+  assert.match(out.value.changes.join('; '), /moved out of its space/)
+  const next = await call('update-room', { id: room.id, space: 'engineering' })
+  assert.equal(next.value.room.space, eng.id)
+  assert.match(next.value.changes.join('; '), /filed under the "Engineering" space/)
+  // Renaming and recoloring keep the members.
+  const renamed = await call('update-space', { id: eng.id, name: 'Dev team', color: null })
+  assert.equal(renamed.value.spaces.find(space => space.id === eng.id).name, 'Dev team')
+  assert.equal((await call('state', {})).value.rooms.find(entry => entry.id === room.id).space, eng.id)
+  assert.equal((await call('delete-space', { id: eng.id })).ok, true)
+  const after = (await call('state', {})).value
+  assert.equal(after.spaces.length, 0)
+  assert.equal(after.bots.find(bot => bot.id === writer.id).space, undefined)
+  assert.equal(after.rooms.find(entry => entry.id === room.id).space, undefined)
+})
+
+test('a space that no longer exists releases its members on load', async (t) => {
+  const { call, stop } = start({
+    version: 1, mainBotIds: ['m1'], revision: 1,
+    bots: { m1: { id: 'm1', sessionId: 'm1', name: 'Chief', instructions: '', createdAt: 1, space: 'gone' } },
+    rooms: { r1: { id: 'r1', name: 'Chat', named: true, members: ['m1'], admin: 'm1', mode: 'everyone', createdAt: 1, space: 'gone' } },
+    spaces: {},
+    exchanges: [], exchangeTurns: {}, questions: {},
+  })
+  t.after(stop)
+  const team = (await call('state', {})).value
+  assert.equal(team.bots[0].space, undefined)
+  assert.equal(team.rooms[0].space, undefined)
+})
+
+test('a space PIN locks the section; the hash never reaches the client', async (t) => {
+  const { call, stop } = start(undefined, { models: ['deepseek-v4-flash'] })
+  t.after(stop)
+  await call('state', {})
+  const space = (await call('create-space', { name: 'Private' })).value
+  const id = space.id
+  assert.equal((await call('check-space-pin', { id, pin: '1234' })).value, false)
+  assert.equal((await call('update-space', { id, pin: 'ab' })).ok, false)
+  const team = (await call('update-space', { id, pin: '2468' })).value
+  const locked = team.spaces.find(entry => entry.id === id)
+  assert.equal(locked.locked, true)
+  assert.equal(locked.pin, undefined)
+  // The stored hash stays in state.json but is not part of the view.
+  assert.equal((await call('check-space-pin', { id, pin: '0000' })).value, false)
+  assert.equal((await call('check-space-pin', { id, pin: '2468' })).value, true)
+  // Without an id the answer names the space the PIN belongs to.
+  assert.equal((await call('check-space-pin', { pin: '2468' })).value, id)
+  assert.equal((await call('check-space-pin', { pin: '0000' })).value, null)
+  const cleared = (await call('update-space', { id, pin: null })).value
+  assert.equal(cleared.spaces.find(entry => entry.id === id).locked, false)
+  assert.equal((await call('check-space-pin', { id, pin: '2468' })).value, false)
+})
+
+test('a stored file downloads over the API file route', async (t) => {
+  const { ctx, routes, stop } = start()
+  t.after(stop)
+  const store = fakeAttachments()
+  ctx.get = name => (name === 'attachments' ? store : undefined)
+  const route = routes.get('/api/bot/file')
+  const text = '文件内容 and some ASCII bytes'
+  const ref = await store.saveFile({ data: new TextEncoder().encode(text), name: 'Báo cáo.txt' })
+  const url = `http://localhost/api/bot/file?attachmentId=${encodeURIComponent(ref.attachmentId)}&name=${encodeURIComponent(ref.name)}&bytes=${ref.bytes}`
+  const response = await route.fetch(new Request(url))
+  assert.equal(response.status, 200)
+  assert.match(response.headers.get('content-disposition'), /^attachment/)
+  assert.match(response.headers.get('content-disposition'), /B%C3%A1o%20c%C3%A1o\.txt/)
+  assert.equal(new TextDecoder().decode(await response.arrayBuffer()), text)
+  // No id, no attachments service, or an unknown id each answer 404.
+  assert.equal((await route.fetch(new Request('http://localhost/api/bot/file'))).status, 404)
+  assert.equal((await route.fetch(new Request('http://localhost/api/bot/file?attachmentId=sha256:99'))).status, 404)
+  ctx.get = () => undefined
+  assert.equal((await route.fetch(new Request(url))).status, 404)
+})
+
+test('a presented file downloads over the API file route', async (t) => {
+  const { ctx, routes, stop } = start()
+  t.after(stop)
+  const dir = mkdtempSync(join(tmpdir(), 'ds-bot-presented-'))
+  t.after(() => rmSync(dir, { recursive: true, force: true, maxRetries: 5 }))
+  const file = join(dir, 'report.txt')
+  writeFileSync(file, 'presented bytes')
+  ctx.sessionController.resolveAgent = async sessionId => (sessionId === 's1'
+    ? { agent: { session: { id: sessionId, seq: 10, header: { cwd: dir } } } }
+    : { error: { code: 'session/unavailable', message: 'No such Session' } })
+  ctx.sessionController.page = async () => ({
+    records: [{ event: { seq: 9, type: 'deliverables/presented', data: { turn: 1, callId: 'c1', files: [{ path: file }, { path: 'relative.txt' }] } } }],
+    hasMore: false,
+  })
+  const route = routes.get('/api/bot/file')
+  const response = await route.fetch(new Request('http://localhost/api/bot/file?sessionId=s1&seq=9&index=0'))
+  assert.equal(response.status, 200)
+  assert.match(response.headers.get('content-disposition'), /^attachment/)
+  assert.match(response.headers.get('content-disposition'), /filename="report\.txt"/)
+  assert.equal(response.headers.get('content-length'), String('presented bytes'.length))
+  assert.equal(new TextDecoder().decode(await response.arrayBuffer()), 'presented bytes')
+  // A relative path resolves in the Session's folder; wrong seq, index or session 404s.
+  writeFileSync(join(dir, 'relative.txt'), 'in the folder')
+  const relative = await route.fetch(new Request('http://localhost/api/bot/file?sessionId=s1&seq=9&index=1'))
+  assert.equal(relative.status, 200)
+  assert.equal(new TextDecoder().decode(await relative.arrayBuffer()), 'in the folder')
+  assert.equal((await route.fetch(new Request('http://localhost/api/bot/file?sessionId=s1&seq=8&index=0'))).status, 404)
+  assert.equal((await route.fetch(new Request('http://localhost/api/bot/file?sessionId=s1&seq=9&index=4'))).status, 404)
+  assert.equal((await route.fetch(new Request('http://localhost/api/bot/file?sessionId=gone&seq=9&index=0'))).status, 404)
+  assert.equal((await route.fetch(new Request('http://localhost/api/bot/file?sessionId=s1&seq=9&index=-1'))).status, 404)
+  assert.equal((await route.fetch(new Request('http://localhost/api/bot/file?sessionId=s1'))).status, 404)
 })
