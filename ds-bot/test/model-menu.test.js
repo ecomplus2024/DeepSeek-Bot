@@ -9,24 +9,30 @@ const bundle = await build({
   bundle: true, format: 'cjs', platform: 'node', write: false,
   external: ['react', 'react-dom', '@deepseek-ai/dsh-client-ui-primitives'],
 })
-const module = { exports: {} }
-runInNewContext(bundle.outputFiles[0].text, {
-  module, exports: module.exports,
-  require: name => {
-    const platform = {
-      react: {
-        createElement: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity) }),
-        useState: initial => [initial, () => {}],
-        useEffect: () => {},
-      },
-      'react-dom': {},
-      '@deepseek-ai/dsh-client-ui-primitives': {},
-    }
-    if (!(name in platform)) throw new Error(`no platform module ${name}`)
-    return platform[name]
-  },
-})
-const { groupModels, ModelChoiceDock, effortRows } = module.exports
+// The bundle is evaluated once per page address, since the plugin asks `location`
+// whether the page is on the machine running DSH.
+function load(hostname) {
+  const module = { exports: {} }
+  runInNewContext(bundle.outputFiles[0].text, {
+    module, exports: module.exports,
+    ...(hostname === undefined ? {} : { location: { hostname } }),
+    require: name => {
+      const platform = {
+        react: {
+          createElement: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity) }),
+          useState: initial => [initial, () => {}],
+          useEffect: () => {},
+        },
+        'react-dom': {},
+        '@deepseek-ai/dsh-client-ui-primitives': {},
+      }
+      if (!(name in platform)) throw new Error(`no platform module ${name}`)
+      return platform[name]
+    },
+  })
+  return module.exports
+}
+const { groupModels, ModelChoiceDock, effortRows } = load()
 
 function nodes(tree, match) {
   if (!tree || typeof tree !== 'object') return []
@@ -91,6 +97,19 @@ test('an empty catalog offers setup choices, and a ready model needs no choice d
   ])
   assert.equal(dock(models, { model: models[0].ref }).tree, null)
   assert.equal(dock(models, { ready: false }).tree, null)
+})
+
+// DSH keeps its settings document on the Host only for a page opened there; over a
+// tunnel its Models page cannot read the providers, so the dock says where they live.
+test('a page opened over the network says where providers are set, and keeps the served models', () => {
+  const { ModelChoiceDock: tunnelDock } = load('bot.itask.vn')
+  const bot = { id: 'chief', name: 'Chief' }
+  const roster = { ready: true, byId: { chief: bot }, models, defaultModel: models[0].ref }
+  const tree = tunnelDock({ sessionId: bot.id, useRoster: select => select(roster), actions: {} })
+  assert.equal(nodes(tree, node => node.type === 'button' && node.children.includes('Manage models')).length, 0)
+  const note = nodes(tree, node => node.props.className === 'bt-model-note')[0]
+  assert.match(note.children[0], /127\.0\.0\.1:3080/)
+  assert.equal(nodes(tree, node => node.props.className === 'bt-model-choice-group').length, 2)
 })
 
 test('the Thinking section always offers Default, so a picked level can be cleared', () => {

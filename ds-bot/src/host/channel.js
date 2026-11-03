@@ -84,13 +84,14 @@ export function install(rt) {
     connectors: rt.connectorsView(),
     capabilityStatuses: rt.capabilityStatusesView(),
     zalo: rt.zaloLive?.() ?? { bots: {}, accounts: [], login: null },
+    telegram: rt.telegramLive?.() ?? { bots: {} },
     // The gate PIN shows only to browsers already past dsh auth — the gate never
     // answers it: remote clients type what this side displays.
     pair: rt.pairView?.() ?? { enabled: false },
   })
   // What a host that only reads the team may still answer.
   // Updates change the dsh profile, not the team, so a reading host may run them too.
-  const READS = new Set(['state', 'models', 'efforts', 'earlier', 'room-progress', 'exchange', 'exchange-text', 'file-text', 'usage', 'schedules', 'memory-view', 'browser-wait', 'browser-result', 'diagnostics', 'diagnostics-log', 'diagnostics-clear', 'update-check', 'update-install', 'dsh-update-install', 'repo-stars', 'approval-answer', 'zalo-status', 'push-key', 'pair-status', 'gemlogin-list', 'gemlogin-shot', 'chromium-list', 'chromium-shot'])
+  const READS = new Set(['state', 'models', 'efforts', 'earlier', 'room-progress', 'exchange', 'exchange-text', 'file-text', 'usage', 'schedules', 'memory-view', 'browser-wait', 'browser-result', 'diagnostics', 'diagnostics-log', 'diagnostics-clear', 'update-check', 'update-install', 'dsh-update-install', 'repo-stars', 'approval-answer', 'zalo-status', 'telegram-status', 'push-key', 'pair-status', 'gemlogin-list', 'gemlogin-shot', 'chromium-list', 'chromium-shot'])
 
   function setPrefs(body) {
     if (body.theme !== undefined) {
@@ -308,6 +309,13 @@ export function install(rt) {
         case 'zalo-thread-mode':
           await rt.load()
           return ok(await rt.zaloEndpoint(endpoint, body))
+        case 'telegram-status':
+          return ok(rt.telegramLive?.() ?? { bots: {} })
+        case 'telegram-connect':
+        case 'telegram-disconnect':
+        case 'telegram-reconnect':
+          await rt.load()
+          return ok(await rt.telegramEndpoint(endpoint, body))
         case 'capability-save':
         case 'capability-delete':
         case 'capability-approve':

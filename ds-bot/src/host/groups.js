@@ -115,6 +115,7 @@ const ROOM_READ_MAX = 30
 // reports a corrupt log only in the message of a generic failure.
 const lostSession = error => error?.code === 'session/not-found' || /\bis corrupt\b|\bcorrupt session log\b/i.test(String(error?.message ?? ''))
 const fileLine = file => `[File "${file.name}" (${file.bytes} bytes) attached]`
+const readingPending = image => `[Image "${image.name ?? 'image'}": being read]`
 
 export function install(rt) {
   const { ctx } = rt
@@ -172,9 +173,23 @@ export function install(rt) {
 
   const appendRoom = (room, line) => {
     room.seq += 1
-    const log = [...room.log, keepGroupLine(room.id, { ...line, seq: room.seq }, line.text ?? '')]
+    const kept = keepGroupLine(room.id, { ...line, seq: room.seq }, line.text ?? '')
+    const log = [...room.log, kept]
     for (const gone of log.slice(0, -ROOM_LOG_MAX)) dropGroupLine(room.id, gone)
     room.log = log.slice(-ROOM_LOG_MAX)
+    return kept
+  }
+
+  // A line the group already shows gains its picture readings: the same line, its text
+  // replaced, so the user's post is never held back while a vision model reads it.
+  const replaceRoomLine = (room, line, text) => {
+    const at = room.log.indexOf(line)
+    if (at < 0) return
+    const before = room.log[at]
+    const { length: _kept, ...rest } = before
+    const after = keepGroupLine(room.id, { ...rest, text }, text)
+    if (before.length !== undefined && after.length === undefined) dropGroupLine(room.id, before)
+    room.log = room.log.map((entry, index) => (index === at ? after : entry))
   }
   Object.assign(rt, { keepGroupLine, dropGroupLines })
 
@@ -508,13 +523,20 @@ export function install(rt) {
       for (const post of posts.filter(item => !item.kickoff && !event(item))) {
         // Image readings go into the log only; `@` names are picked from what the user typed.
         // A file stays with its line and reaches each member the line is shown to.
-        const readings = post.images === undefined ? [] : await rt.imagesForGroup(post.images, room.id)
-        const text = [post.text, ...readings, ...(post.files ?? []).map(fileLine)].filter(Boolean).join('\n')
-        appendRoom(room, {
+        const images = post.images ?? []
+        const files = (post.files ?? []).map(fileLine)
+        // The line goes in before its pictures are read, so the group shows the post at
+        // once; the readings join the same line when the vision model answers, well
+        // before the round starts and any member reads it.
+        const line = appendRoom(room, {
           ...(post.botId ? { who: rt.botOf(post.botId)?.name ?? post.name ?? 'Bot', botId: post.botId } : { who: 'User' }),
-          text,
+          text: [post.text, ...images.map(readingPending), ...files].filter(Boolean).join('\n'),
           ...(post.files === undefined ? {} : { files: post.files }),
         })
+        if (images.length === 0) continue
+        await rt.save()
+        const readings = await rt.imagesForGroup(images, room.id)
+        replaceRoomLine(room, line, [post.text, ...readings, ...files].filter(Boolean).join('\n'))
       }
       if (posts.some(post => !post.botId && !post.kickoff)) room.lateRounds = 0
       await rt.save()

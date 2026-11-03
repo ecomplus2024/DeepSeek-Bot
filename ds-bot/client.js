@@ -136,6 +136,9 @@ var ZH = {
   Disconnect: "断开",
   Connect: "连接",
   "GitHub token": "GitHub token",
+  "Sending…": "发送中…",
+  "Sending an image…": "正在发送图片…",
+  "Uploading an attachment…": "正在上传附件…",
   "Create a token on GitHub": "去 GitHub 生成 token",
   "Could not reach GitHub": "连不上 GitHub",
   "GitHub did not accept this token": "GitHub 不接受这个 token",
@@ -947,6 +950,7 @@ var ZH = {
   "Create task": "创建任务",
   "Turn on Automation tasks in DSH": "在 DSH 里打开「自动化任务」",
   "Switch on Automation tasks on the Plugins page in Harness settings.": "在 Harness 设置的插件页启用「自动化任务」。",
+  "Harness settings open on the machine running DSH only: use http://127.0.0.1:3080 there. The models already served stay pickable here.": "Harness 设置只能在运行 DSH 的机器上打开：请在那台机器上访问 http://127.0.0.1:3080。这里仍可选用已提供的模型。",
   "Open Harness settings": "打开 Harness 设置",
   "New task": "新建任务",
   "No scheduled tasks yet.": "还没有定时任务。",
@@ -977,7 +981,18 @@ var ZH = {
   "Use this folder": "使用这个文件夹",
   "Up one level": "上一级",
   "No folders inside.": "里面没有文件夹。",
-  "Some folders are not shown.": "还有一些文件夹没有显示。"
+  "Some folders are not shown.": "还有一些文件夹没有显示。",
+  // Settings → Connectors → Telegram
+  "Telegram · {bot}": "Telegram · {bot}",
+  "Paired as @{username}": "已与 @{username} 配对",
+  Paired: "已配对",
+  "@{username} — waiting for the pairing code": "@{username} — 等待配对码",
+  "Not paired yet": "尚未配对",
+  "Open @{username} in Telegram and send that code.": "在 Telegram 里打开 @{username}，发送这个配对码。",
+  "Or create a bot on @BotFather": "或到 @BotFather 新建一个 Bot",
+  "Reach a Bot from your phone, and let it message you first": "用手机找到 Bot，也让 Bot 主动给你发消息",
+  "Telegram bot token": "Telegram Bot Token",
+  "Create a bot on @BotFather, then paste its token": "到 @BotFather 新建 Bot，然后粘贴它的 Token"
 };
 var HOST_ERRORS = [
   [/^Model (.+) is not available\. Available: (.*)$/, "模型 $1 不可用。可用的：$2"],
@@ -1126,6 +1141,9 @@ var VI = {
   '{"API_KEY": "$DSH_SECRET_MY_KEY"}': '{"API_KEY": "$DSH_SECRET_MY_KEY"}',
   URL: "URL",
   "Headers (JSON)": "Header (JSON)",
+  "Sending…": "Đang gửi…",
+  "Sending an image…": "Đang gửi ảnh…",
+  "Uploading an attachment…": "Đang tải tệp lên…",
   "Skill instructions": "Hướng dẫn kỹ năng",
   "Save changes": "Lưu thay đổi",
   Edit: "Sửa",
@@ -1958,6 +1976,7 @@ var VI = {
   "Create task": "Tạo tác vụ",
   "Turn on Automation tasks in DSH": "Bật “Tác vụ tự động” trong DSH",
   "Switch on Automation tasks on the Plugins page in Harness settings.": "Bật “Tác vụ tự động” ở trang Plugin trong cài đặt Harness.",
+  "Harness settings open on the machine running DSH only: use http://127.0.0.1:3080 there. The models already served stay pickable here.": "Cài đặt Harness chỉ mở được trên máy đang chạy DSH: vào http://127.0.0.1:3080 ở máy đó. Ở đây vẫn chọn được các model đã có.",
   "Open Harness settings": "Mở cài đặt Harness",
   "New task": "Tác vụ mới",
   "No scheduled tasks yet.": "Chưa có tác vụ hẹn giờ.",
@@ -1988,7 +2007,18 @@ var VI = {
   "Use this folder": "Dùng thư mục này",
   "Up one level": "Lên một cấp",
   "No folders inside.": "Không có thư mục nào bên trong.",
-  "Some folders are not shown.": "Một số thư mục không được hiển thị."
+  "Some folders are not shown.": "Một số thư mục không được hiển thị.",
+  // Settings → Connectors → Telegram
+  "Telegram · {bot}": "Telegram · {bot}",
+  "Paired as @{username}": "Đã ghép với @{username}",
+  Paired: "Đã ghép nối",
+  "@{username} — waiting for the pairing code": "@{username} — đang chờ mã ghép nối",
+  "Not paired yet": "Chưa ghép nối",
+  "Open @{username} in Telegram and send that code.": "Mở @{username} trong Telegram và gửi mã đó.",
+  "Or create a bot on @BotFather": "Hoặc tạo bot mới ở @BotFather",
+  "Reach a Bot from your phone, and let it message you first": "Nhắn cho Bot từ điện thoại, và để Bot chủ động nhắn bạn trước",
+  "Telegram bot token": "Token bot Telegram",
+  "Create a bot on @BotFather, then paste its token": "Tạo bot ở @BotFather rồi dán token vào đây"
 };
 var HOST_ERRORS_VI = [
   [/^Model (.+) is not available\. Available: (.*)$/, "Model $1 không khả dụng. Có sẵn: $2"],
@@ -3477,6 +3507,12 @@ button.bt-set-row:hover{background:var(--bt-hover)}
 .bt-zalo-search{height:32px;position:sticky;top:0;z-index:1}
 .bt-zalo-more{align-self:center;margin-top:2px}
 
+/* Settings → Connectors → Telegram. */
+.bt-tg-code{display:flex;align-items:center;gap:8px;padding-left:48px}
+.bt-tg-code-value{font-family:var(--bt-mono,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:16px;letter-spacing:.16em;color:var(--bt-ink-1);user-select:all}
+.bt-tg-steps{display:flex;flex-direction:column;gap:4px;padding-left:48px;font-size:12px;line-height:17px;color:var(--bt-ink-3)}
+.bt-tg-steps a{color:var(--bt-ink-2)}
+
 /* Shell chrome reshaped for the team view. Selectors use stable data attributes where the
    shell offers them and CSS-module name suffixes elsewhere. */
 [class*="_newSession"],nav[class*="_panelList"],[class*="_logoRow"]>[class*="_brand"],[class*="_logoRow"]:not(:has([class*="_toggle"])){display:none!important}
@@ -3573,6 +3609,7 @@ button:hover .bt-you{background:color-mix(in srgb,var(--bt-ink) 9%,var(--bt-side
 .bt-menu[data-leaving]{pointer-events:none;animation:bt-pop-out .12s cubic-bezier(.4,0,1,1) forwards}
 .bt-menu-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bt-menu-hint{flex:none;color:var(--bt-ink-3);font-size:12px;font-variant-numeric:tabular-nums}
+.bt-menu-note{padding:6px 8px;max-width:280px;color:var(--bt-ink-3);font-size:12px;line-height:17px;white-space:normal}
 .bt-palette-layer{position:fixed;inset:var(--dsh-frame-chrome-top,0px) 0 0;z-index:70;pointer-events:auto;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}
 .bt-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.46);animation:bt-fade .22s ease-out}
 .bt-palette{position:absolute;top:50%;left:50%;width:min(560px,92vw);transform:translate(-50%,-50%);display:flex;flex-direction:column;border-radius:12px;background:var(--bt-main);border:1px solid var(--bt-line-2);box-shadow:0 24px 48px -12px rgba(0,0,0,.25);overflow:hidden;color:var(--bt-ink);animation:bt-palette-in ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing},bt-veil-in .2s ease-out}
@@ -6676,7 +6713,12 @@ var readUnlocks = () => {
   } catch {
   }
   const set = new Set(list);
-  const gate = /(?:^|;\s*)ds-bot-unlocked=([^;]+)/.exec(document.cookie ?? "")?.[1];
+  let gate;
+  try {
+    gate = /(?:^|;\s*)ds-bot-unlocked=([^;]+)/.exec(document.cookie ?? "")?.[1];
+  } catch {
+    gate = void 0;
+  }
   if (gate) set.add(decodeURIComponent(gate));
   return set;
 };
@@ -6981,6 +7023,8 @@ function holdShellShortcuts(shortcuts) {
     if (shellShortcuts === shortcuts) shellShortcuts = null;
   };
 }
+var canEditProviders = () => typeof location === "undefined" || ["localhost", "127.0.0.1", "::1", "[::1]"].includes(location.hostname);
+var LOCAL_SETTINGS_NOTE = "Harness settings open on the machine running DSH only: use http://127.0.0.1:3080 there. The models already served stay pickable here.";
 function openHarnessSettings() {
   requestAnimationFrame(() => {
     if (openShellSettings) {
@@ -7659,6 +7703,57 @@ function ComposerPlus({ sessionId, inputActions, useRoster, actions }) {
     ), document.body) : null
   );
 }
+var SEND_NOTE_MS = 500;
+function useDraftUploading() {
+  const [uploading, setUploading] = (0, import_react13.useState)(false);
+  (0, import_react13.useEffect)(() => {
+    const read = () => {
+      const card = document.querySelector("[data-composer-card]");
+      if (card === null) {
+        setUploading(false);
+        return;
+      }
+      const held = card.querySelector('[data-slot="conversation.input.attachments"] [role=group] > *') !== null;
+      const send = card.querySelector('button[class*="_primary"]');
+      setUploading(held && send !== null && send.disabled === true);
+    };
+    const observer = new MutationObserver(read);
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["disabled"] });
+    read();
+    return () => observer.disconnect();
+  }, []);
+  return uploading;
+}
+function SendingDock({ sessionId, useSession }) {
+  const sending = useSession((snapshot) => (snapshot?.pendingSubmissions ?? []).some((submission) => submission.placement !== "queued"));
+  const pictures = useSession((snapshot) => (snapshot?.pendingSubmissions ?? []).some((submission) => submission.placement !== "queued" && (submission.attachments ?? []).some((attachment) => attachment.type === "image")));
+  const uploading = useDraftUploading();
+  const waiting = uploading || sending;
+  const [shown, setShown] = (0, import_react13.useState)(false);
+  (0, import_react13.useEffect)(() => {
+    if (!waiting) {
+      setShown(false);
+      return void 0;
+    }
+    const timer = setTimeout(() => setShown(true), SEND_NOTE_MS);
+    return () => clearTimeout(timer);
+  }, [waiting]);
+  if (!shown || sessionId === void 0) return null;
+  const text = uploading ? t("Uploading an attachment…") : pictures ? t("Sending an image…") : t("Sending…");
+  return (0, import_react13.createElement)(
+    "div",
+    { className: "bt-send-dock", role: "status" },
+    (0, import_react13.createElement)("span", { className: "bt-send-spin", "aria-hidden": true }),
+    (0, import_react13.createElement)("span", { className: "bt-send-text" }, text)
+  );
+}
+var SENDING_CSS = `
+.bt-send-dock{display:flex;align-items:center;gap:8px;width:max-content;max-width:min(420px,calc(100% - 32px));height:30px;margin:0 auto 8px;padding:0 13px;box-sizing:border-box;border-radius:999px;background:var(--bt-main);box-shadow:0 0 0 .5px var(--bt-line-2),0 2px 8px -2px rgba(0,0,0,.12);color:var(--bt-ink-2);font-size:13px;line-height:18px;animation:bt-veil-in .18s ease-out backwards}
+.bt-send-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bt-send-spin{flex:none;width:12px;height:12px;box-sizing:border-box;border-radius:50%;border:1.5px solid color-mix(in srgb,var(--bt-ink) 18%,transparent);border-top-color:var(--bt-ink-2);animation:bt-send-spin .7s linear infinite}
+@keyframes bt-send-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.bt-send-dock{animation:none}.bt-send-spin{animation-duration:2s}}
+`;
 
 // src/client/at-menu.js
 var BOTS_SOURCE = "ds-bot";
@@ -8112,6 +8207,10 @@ ${shown}`, { axis: "y", ...QUICK_EDGES });
 var import_react16 = require("react");
 var import_react_dom6 = require("react-dom");
 var MENU_EXIT_MS = 120;
+function ProvidersRow({ onOpen }) {
+  if (canEditProviders()) return onOpen();
+  return (0, import_react16.createElement)("div", { className: "bt-menu-note" }, t(LOCAL_SETTINGS_NOTE));
+}
 function groupModels(models) {
   const groups = /* @__PURE__ */ new Map();
   for (const model of models ?? []) {
@@ -8305,10 +8404,10 @@ function ModelMenu({ bot, roster, actions, run, wide = false, onPick, onPickEffo
       models.length > 0 ? (0, import_react16.createElement)(ModelRows, { roster, current, onPick: pick2 }) : (0, import_react16.createElement)("div", { className: "bt-model-none" }, t("No models are set up in DeepSeek Harness yet.")),
       effortRows(reasoning).length > 0 ? (0, import_react16.createElement)(EffortRows, { reasoning, current: picked, onPick: pickEffort }) : null,
       (0, import_react16.createElement)("div", { className: "bt-menu-sep", role: "separator" }),
-      (0, import_react16.createElement)("button", { type: "button", role: "menuitem", onClick: () => {
+      (0, import_react16.createElement)(ProvidersRow, { onOpen: () => (0, import_react16.createElement)("button", { type: "button", role: "menuitem", onClick: () => {
         close();
         openHarnessSettings();
-      } }, (0, import_react16.createElement)(SlidersIcon), (0, import_react16.createElement)("span", { className: "bt-menu-label" }, t("Models and providers…")))
+      } }, (0, import_react16.createElement)(SlidersIcon), (0, import_react16.createElement)("span", { className: "bt-menu-label" }, t("Models and providers…"))) })
     ), document.body) : null
   );
 }
@@ -8369,10 +8468,10 @@ function ImageModelMenu({ bot, roster, actions, run, wide = false }) {
       ),
       models.length > 0 ? (0, import_react16.createElement)(ModelRows, { roster: { ...roster, models }, current: bot.imageModel, onPick: pick2 }) : (0, import_react16.createElement)("div", { className: "bt-model-none" }, t("No models can read images yet.")),
       (0, import_react16.createElement)("div", { className: "bt-menu-sep", role: "separator" }),
-      (0, import_react16.createElement)("button", { type: "button", role: "menuitem", onClick: () => {
+      (0, import_react16.createElement)(ProvidersRow, { onOpen: () => (0, import_react16.createElement)("button", { type: "button", role: "menuitem", onClick: () => {
         close();
         openHarnessSettings();
-      } }, (0, import_react16.createElement)(SlidersIcon), (0, import_react16.createElement)("span", { className: "bt-menu-label" }, t("Models and providers…")))
+      } }, (0, import_react16.createElement)(SlidersIcon), (0, import_react16.createElement)("span", { className: "bt-menu-label" }, t("Models and providers…"))) })
     ), document.body) : null
   );
 }
@@ -8414,7 +8513,7 @@ function ModelChoiceDock({ sessionId, useRoster, actions }) {
         onClick: () => pick2(model.ref)
       }, model.name, busy === model.ref ? (0, import_react16.createElement)("span", { className: "bt-model-spin", "aria-label": t("Saving…") }) : null)))
     )),
-    (0, import_react16.createElement)("button", { key: "manage", type: "button", className: "bt-model-chip bt-model-chip-quiet", onClick: openHarnessSettings }, (0, import_react16.createElement)(SlidersIcon), t("Manage models"))
+    canEditProviders() ? (0, import_react16.createElement)("button", { key: "manage", type: "button", className: "bt-model-chip bt-model-chip-quiet", onClick: openHarnessSettings }, (0, import_react16.createElement)(SlidersIcon), t("Manage models")) : (0, import_react16.createElement)("div", { key: "manage", className: "bt-model-note" }, t(LOCAL_SETTINGS_NOTE))
   ];
   return (0, import_react16.createElement)(
     "div",
@@ -8440,8 +8539,7 @@ function ModelChoiceDock({ sessionId, useRoster, actions }) {
 function setupChoices(actions) {
   return [
     actions.canSignIn?.() ? [t("Sign in to DeepSeek"), () => actions.signIn()] : null,
-    [t("Enter a DeepSeek API key"), () => openHarnessOnboarding("deepseek-official")],
-    [t("Open settings to set up a custom model"), openHarnessSettings]
+    ...canEditProviders() ? [[t("Enter a DeepSeek API key"), () => openHarnessOnboarding("deepseek-official")], [t("Open settings to set up a custom model"), openHarnessSettings]] : []
   ].filter(Boolean);
 }
 function DeepSeekSignIn({ useUi, actions }) {
@@ -8497,6 +8595,7 @@ var MODEL_CSS = `
 .bt-model-chip:disabled{cursor:default}
 .bt-model-chip:disabled:not([aria-busy]){opacity:.5}
 .bt-model-error{margin-left:30px}
+.bt-model-note{margin-left:30px;max-width:min(560px,calc(100% - 30px));font-size:12px;line-height:17px;color:var(--bt-ink-3)}
 @keyframes bt-model-in{from{opacity:0;transform:translateY(6px)}}
 .bt-model-spin{flex:none;width:14px;height:14px;border-radius:50%;border:1.5px solid var(--bt-line-2);border-top-color:var(--bt-ink-2);animation:bt-model-spin .7s linear infinite}
 @keyframes bt-model-spin{to{transform:rotate(360deg)}}
@@ -8881,7 +8980,7 @@ function AutomationOff() {
     (0, import_react18.createElement)("span", { className: "bt-task-off-mark" }, (0, import_react18.createElement)(ClockIcon)),
     (0, import_react18.createElement)("span", { className: "bt-task-off-title" }, t("Turn on Automation tasks in DSH")),
     (0, import_react18.createElement)("span", { className: "bt-set-hint" }, t("Switch on Automation tasks on the Plugins page in Harness settings.")),
-    (0, import_react18.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", onClick: openHarnessSettings }, t("Open Harness settings"))
+    canEditProviders() ? (0, import_react18.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", onClick: openHarnessSettings }, t("Open Harness settings")) : (0, import_react18.createElement)("span", { className: "bt-set-hint" }, t(LOCAL_SETTINGS_NOTE))
   );
 }
 function SchedulesPage({ roster, actions, start }) {
@@ -8922,7 +9021,7 @@ function BotSchedules({ bot, roster, actions }) {
         "div",
         { className: "bt-set-row bt-bs-row" },
         (0, import_react18.createElement)("span", { className: "bt-set-copy" }, (0, import_react18.createElement)("span", { className: "bt-set-hint" }, t("Switch on Automation tasks on the Plugins page in Harness settings."))),
-        (0, import_react18.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", onClick: openHarnessSettings }, t("Open Harness settings"))
+        canEditProviders() ? (0, import_react18.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", onClick: openHarnessSettings }, t("Open Harness settings")) : (0, import_react18.createElement)("span", { className: "bt-set-hint" }, t(LOCAL_SETTINGS_NOTE))
       ) : [
         ...tasks.map((task) => (0, import_react18.createElement)(TaskRow, { key: task.id, task, actions, roster, onView: publish })),
         (0, import_react18.createElement)("button", { key: "new", type: "button", className: "bt-set-row bt-bs-row bt-gs-add", onClick: () => actions.openSettings("schedules", bot.id) }, (0, import_react18.createElement)(PlusIcon), t("New task"))
@@ -12175,7 +12274,8 @@ function ConnectorsPage({ roster, actions }) {
     "section",
     { className: "bt-set-section" },
     (0, import_react29.createElement)("div", { className: "bt-set-card bt-connectors-card" }, list.length === 0 ? (0, import_react29.createElement)("div", { className: "bt-set-row" }, (0, import_react29.createElement)("span", { className: "bt-set-hint" }, t("No connectors"))) : list.map((connector) => (0, import_react29.createElement)(ConnectorRow, { key: connector.id, connector, actions }))),
-    (0, import_react29.createElement)(ZaloCard, { roster, actions })
+    (0, import_react29.createElement)(ZaloCard, { roster, actions }),
+    (0, import_react29.createElement)(TelegramCard, { roster, actions })
   );
 }
 var ZaloMark = () => (0, import_react29.createElement)(
@@ -12420,6 +12520,139 @@ function ZaloCard({ roster, actions }) {
     })),
     showConnect ? (0, import_react29.createElement)(ZaloConnect, { roster, actions, login }) : null,
     bound2.length === 0 && !showConnect ? (0, import_react29.createElement)("div", { className: "bt-set-row" }, (0, import_react29.createElement)("span", { className: "bt-set-hint" }, t("No Bots to link"))) : null
+  );
+}
+var TelegramMark = () => (0, import_react29.createElement)(
+  "svg",
+  { width: 20, height: 20, viewBox: "0 0 16 16", fill: "currentColor", "aria-hidden": true },
+  (0, import_react29.createElement)("path", { d: "M8 0a8 8 0 100 16A8 8 0 008 0zm3.9 5.5l-1.3 6.1c-.1.5-.4.6-.8.4l-2.2-1.6-1.1 1c-.1.1-.2.2-.4.2l.2-2.2 4-3.6c.2-.2 0-.3-.2-.1L5.9 8.6 3.7 7.9c-.5-.2-.5-.5.1-.7l7.4-2.9c.4-.1.8.1.7.7z" })
+);
+var BOTFATHER = "https://t.me/BotFather";
+function telegramStatus(entry) {
+  if (entry === void 0) return "";
+  if (entry.owner) return entry.username ? t("Paired as @{username}", { username: entry.username }) : t("Paired");
+  if (entry.state === "error") return t("Could not connect: {error}", { error: entry.error ?? "" });
+  if (entry.username) return t("@{username} — waiting for the pairing code", { username: entry.username });
+  return t("Not paired yet");
+}
+function TelegramPairing({ entry }) {
+  if (entry?.owner || entry?.code === null || entry?.code === void 0) return null;
+  return (0, import_react29.createElement)(
+    "div",
+    null,
+    (0, import_react29.createElement)(
+      "div",
+      { className: "bt-tg-code" },
+      (0, import_react29.createElement)("span", { className: "bt-tg-code-value" }, entry.code),
+      (0, import_react29.createElement)("button", {
+        type: "button",
+        className: "bt-soft bt-soft-sm",
+        onClick: () => void navigator.clipboard?.writeText(`/start ${entry.code}`).catch(() => {
+        })
+      }, t("Copy"))
+    ),
+    (0, import_react29.createElement)(
+      "div",
+      { className: "bt-tg-steps" },
+      (0, import_react29.createElement)("span", null, t("Open @{username} in Telegram and send that code.", { username: entry.username || "your bot" })),
+      (0, import_react29.createElement)("a", { href: BOTFATHER, target: "_blank", rel: "noopener noreferrer" }, t("Or create a bot on @BotFather"))
+    )
+  );
+}
+function TelegramBound({ bot, entry, actions }) {
+  const [busy, setBusy] = (0, import_react29.useState)(false);
+  const [error, setError] = (0, import_react29.useState)(null);
+  const run = (task) => {
+    setBusy(true);
+    setError(null);
+    task.catch((failure) => setError(failure?.message ?? String(failure))).finally(() => setBusy(false));
+  };
+  const state = entry?.state === "error" ? "error" : entry?.state === "ready" ? "ready" : "off";
+  return (0, import_react29.createElement)(
+    "div",
+    { className: "bt-connector", "data-state": state },
+    (0, import_react29.createElement)(
+      "div",
+      { className: "bt-connector-head" },
+      (0, import_react29.createElement)("span", { className: "bt-connector-mark" }, (0, import_react29.createElement)(TelegramMark)),
+      (0, import_react29.createElement)(
+        "span",
+        { className: "bt-connector-text" },
+        (0, import_react29.createElement)("span", { className: "bt-connector-name" }, t("Telegram · {bot}", { bot: bot.name })),
+        (0, import_react29.createElement)("span", { className: "bt-connector-status" }, telegramStatus(entry))
+      ),
+      (0, import_react29.createElement)(
+        "span",
+        { className: "bt-connector-actions" },
+        (0, import_react29.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", disabled: busy, onClick: () => run(actions.telegramReconnect(bot.id)) }, t("Reconnect")),
+        (0, import_react29.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", disabled: busy, onClick: () => run(actions.telegramDisconnect(bot.id)) }, t("Disconnect"))
+      )
+    ),
+    (0, import_react29.createElement)(TelegramPairing, { entry }),
+    error ? (0, import_react29.createElement)("div", { className: "bt-connector-error", role: "alert" }, error) : null
+  );
+}
+function TelegramConnect({ roster, actions }) {
+  const unbound = (roster?.bots ?? []).filter((bot) => roster?.telegram?.bots?.[bot.id]?.owner === void 0 || roster?.telegram?.bots?.[bot.id]?.owner === null);
+  const [botId, setBotId] = (0, import_react29.useState)("");
+  const [token, setToken] = (0, import_react29.useState)("");
+  const [busy, setBusy] = (0, import_react29.useState)(false);
+  const [error, setError] = (0, import_react29.useState)(null);
+  const picked = botId || unbound[0]?.id || "";
+  const connect = () => {
+    if (busy || picked === "" || token.trim() === "") return;
+    setBusy(true);
+    setError(null);
+    actions.telegramConnect(picked, token).then(() => setToken(""), (failure) => setError(failure?.message ?? String(failure))).finally(() => setBusy(false));
+  };
+  return (0, import_react29.createElement)(
+    "div",
+    { className: "bt-connector", "data-state": "off" },
+    (0, import_react29.createElement)(
+      "div",
+      { className: "bt-connector-head" },
+      (0, import_react29.createElement)("span", { className: "bt-connector-mark" }, (0, import_react29.createElement)(TelegramMark)),
+      (0, import_react29.createElement)(
+        "span",
+        { className: "bt-connector-text" },
+        (0, import_react29.createElement)("span", { className: "bt-connector-name" }, "Telegram"),
+        (0, import_react29.createElement)("span", { className: "bt-connector-status" }, t("Reach a Bot from your phone, and let it message you first"))
+      ),
+      (0, import_react29.createElement)(
+        "span",
+        { className: "bt-connector-actions" },
+        unbound.length > 1 ? (0, import_react29.createElement)(
+          "select",
+          { className: "bt-select bt-zalo-bot", value: picked, onChange: (event) => setBotId(event.target.value) },
+          unbound.map((bot) => (0, import_react29.createElement)("option", { key: bot.id, value: bot.id }, bot.name))
+        ) : null
+      )
+    ),
+    (0, import_react29.createElement)(
+      "div",
+      { className: "bt-connector-form" },
+      (0, import_react29.createElement)("label", { className: "bt-q-field bt-secret-field" }, (0, import_react29.createElement)(MaskedInput, { value: token, onChange: setToken, onEnter: connect, label: t("Telegram bot token") })),
+      (0, import_react29.createElement)(
+        "div",
+        { className: "bt-connector-form-row" },
+        (0, import_react29.createElement)("a", { className: "bt-connector-link", href: BOTFATHER, target: "_blank", rel: "noopener noreferrer" }, t("Create a bot on @BotFather, then paste its token")),
+        (0, import_react29.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", disabled: busy || token.trim() === "" || picked === "", onClick: connect }, busy ? t("Connecting…") : t("Connect"))
+      )
+    ),
+    error ? (0, import_react29.createElement)("div", { className: "bt-connector-error", role: "alert" }, error) : null
+  );
+}
+function TelegramCard({ roster, actions }) {
+  const telegram = roster?.telegram ?? { bots: {} };
+  const bots = roster?.bots ?? [];
+  const bound2 = bots.filter((bot) => telegram.bots?.[bot.id] !== void 0);
+  const unbound = bots.filter((bot) => telegram.bots?.[bot.id] === void 0);
+  return (0, import_react29.createElement)(
+    "div",
+    { className: "bt-set-card bt-connectors-card" },
+    bound2.map((bot) => (0, import_react29.createElement)(TelegramBound, { key: bot.id, bot, entry: telegram.bots[bot.id], actions })),
+    unbound.length > 0 ? (0, import_react29.createElement)(TelegramConnect, { roster, actions }) : null,
+    bound2.length === 0 && unbound.length === 0 ? (0, import_react29.createElement)("div", { className: "bt-set-row" }, (0, import_react29.createElement)("span", { className: "bt-set-hint" }, t("No Bots to link"))) : null
   );
 }
 
@@ -13155,7 +13388,7 @@ function SettingsDialog({ page, id, roster, actions, useUpdate, leaving = false 
           "aria-current": shown === key ? "page" : void 0,
           onClick: () => actions.openSettings(key)
         }, (0, import_react32.createElement)(PAGE_ICONS[key]), t(text))),
-        (0, import_react32.createElement)("button", {
+        canEditProviders() ? (0, import_react32.createElement)("button", {
           type: "button",
           className: "bt-settings-item bt-settings-shell",
           title: t("Models, providers, and the rest of DeepSeek Harness"),
@@ -13163,7 +13396,7 @@ function SettingsDialog({ page, id, roster, actions, useUpdate, leaving = false 
             close();
             openHarnessSettings();
           }
-        }, (0, import_react32.createElement)(SlidersIcon), t("Harness settings"))
+        }, (0, import_react32.createElement)(SlidersIcon), t("Harness settings")) : null
       ),
       (0, import_react32.createElement)(
         "div",
@@ -16141,6 +16374,9 @@ function apply(ctx) {
     zaloBind: (botId, uid) => after(call("zalo-bind", { botId, uid })),
     zaloThreads: (botId) => call("zalo-threads", { botId }),
     zaloThreadMode: (botId, thread) => after(call("zalo-thread-mode", { botId, ...thread })),
+    telegramConnect: (botId, token) => after(call("telegram-connect", { botId, token })),
+    telegramDisconnect: (botId) => after(call("telegram-disconnect", { botId })),
+    telegramReconnect: (botId) => after(call("telegram-reconnect", { botId })),
     saveCapability: (capability) => after(call("capability-save", capability)),
     deleteCapability: (name) => after(call("capability-delete", { name })),
     approveCapability: (name) => after(call("capability-approve", { name })),
@@ -16394,6 +16630,7 @@ function apply(ctx) {
     () => installCompiledStyles(FEEDBACK_CSS, "feedback"),
     () => installCompiledStyles(ABOUT_CSS, "about"),
     () => installCompiledStyles(MEMBER_CSS, "members"),
+    () => installCompiledStyles(SENDING_CSS, "sending"),
     () => installCompiledStyles(USER_MESSAGE_CSS, "user-messages"),
     browsers ? () => installCompiledStyles(BROWSER_CSS, "browser") : null,
     // Last, so its phone-width rules win ties against the blocks above.
@@ -16451,7 +16688,8 @@ function apply(ctx) {
     () => shadow("conversation.input.dock", { id: "bot-members", order: -120, inject: face }, MemberDock),
     () => shadow("conversation.input.dock", { id: "bot-model", order: -110, inject: face }, ModelChoiceDock),
     () => shadow("conversation.input.dock", { id: "bot-question", order: -100, inject: face }, QuestionDock),
-    () => shadow("conversation.input.dock", { id: "bot-secret", order: -90, inject: face }, SecretDock)
+    () => shadow("conversation.input.dock", { id: "bot-secret", order: -90, inject: face }, SecretDock),
+    () => shadow("conversation.input.dock", { id: "bot-sending", order: -80, inject: face }, SendingDock)
   ];
   ctx.effect(() => {
     const style = installStyles(RETURN_CSS, "return");

@@ -53,7 +53,7 @@ export function install(rt) {
   // The retry goes where the turn's trigger came from: a group round's waiter or a
   // Bot's request keeps its exchange; anything else is a nudge in the Bot's own chat.
   const retryWrittenCall = (id, info) => {
-    const keeps = info !== undefined && (info.role === 'room' || info.role === 'zalo' || expectsReply(info))
+    const keeps = info !== undefined && (info.role === 'room' || info.role === 'zalo' || info.role === 'telegram' || expectsReply(info))
     return rt.deliver({
       ...(keeps && info.senderSessionId ? { fromId: info.senderSessionId } : {}),
       toId: rt.selfOf(id),
@@ -235,7 +235,7 @@ export function install(rt) {
       entry.joined = info.joined.filter(item => item?.info !== undefined && item.info !== null)
     }
     if (rt.groupOwners.has(sessionId)) return
-    if ((expectsReply(info) && !answersUser(info)) || info.role === 'room' || info.role === 'zalo' || (info.role === 'handoff' && info.resume !== true)) {
+    if ((expectsReply(info) && !answersUser(info)) || info.role === 'room' || info.role === 'zalo' || info.role === 'telegram' || (info.role === 'handoff' && info.resume !== true)) {
       markExchangeTurn(sessionId, entry.turn)
     }
   }
@@ -450,9 +450,10 @@ export function install(rt) {
           queueRoomMessage(id, { text: '', kickoff: true })
         } else if (source?.kind === SOURCE_KIND) {
           if (entry.turn === undefined) {
-            // A 'zalo' message that arrives while another is already pending joins
-            // the coming turn instead of replacing it, so its waiter is answered too.
-            if (entry.pending !== undefined && source.role === 'zalo' && !entry.pendingExtras?.some(extra => extra.exchangeId === source.exchangeId)) {
+            // A 'zalo' or 'telegram' message that arrives while another is already
+            // pending joins the coming turn instead of replacing it, so its waiter is
+            // answered too.
+            if (entry.pending !== undefined && (source.role === 'zalo' || source.role === 'telegram') && !entry.pendingExtras?.some(extra => extra.exchangeId === source.exchangeId)) {
               entry.pendingExtras = [...(entry.pendingExtras ?? []), { info: source, text: textOf(event.data.content).replace(/^\[[^\]\n]*\]\n?/, '') }]
             } else entry.pending = source
           }
@@ -461,7 +462,7 @@ export function install(rt) {
             // A result for other work than this turn's informs it, and comes back in a
             // turn of its own once this one ends, which goes on with that work.
             entry.later = [...(entry.later ?? []), { info: source, text: textOf(event.data.content).replace(/^\[[^\]\n]*\]\n?/, '') }]
-          } else if ((expectsReply(source) || source.role === 'zalo') && !answersUser(source)
+          } else if ((expectsReply(source) || source.role === 'zalo' || source.role === 'telegram') && !answersUser(source)
             && source.exchangeId !== entry.info?.exchangeId
             && !(entry.joined ?? []).some(joined => joined.info.exchangeId === source.exchangeId)) {
             // A request that lands inside a running turn steers that work but is
@@ -594,9 +595,9 @@ export function install(rt) {
             .catch(error => rt.warn('ds-bot: answer from %s not sent: %s', name, error))
         }
         // A retried turn answers the same waiter or sender, so this one passes nothing on.
-        // A 'zalo' turn answers the same way a 'room' one does: its waiter relays
-        // the reply back to the Zalo thread (zalo.js); without a waiter it drops.
-        if (!retry && (info?.role === 'room' || info?.role === 'zalo')) {
+        // A 'zalo' or 'telegram' turn answers the same way a 'room' one does: its
+        // waiter relays the reply back to that chat; without a waiter it drops.
+        if (!retry && (info?.role === 'room' || info?.role === 'zalo' || info?.role === 'telegram')) {
           const waiter = roomWaiters.get(info.exchangeId)
           roomWaiters.delete(info.exchangeId)
           const stopped = stoppedRoomTurns.delete(info.exchangeId)
@@ -618,9 +619,9 @@ export function install(rt) {
           finish(info, replyText())
         }
         for (const request of joined) {
-          // A 'zalo' message that joined the turn is answered through its waiter,
-          // like the trigger's, not through a deferred request of its own.
-          if (request.info.role === 'zalo') {
+          // A 'zalo' or 'telegram' message that joined the turn is answered through
+          // its waiter, like the trigger's, not through a deferred request of its own.
+          if (request.info.role === 'zalo' || request.info.role === 'telegram') {
             const waiter = roomWaiters.get(request.info.exchangeId)
             roomWaiters.delete(request.info.exchangeId)
             if (failure !== undefined) waiter?.fail(failure)

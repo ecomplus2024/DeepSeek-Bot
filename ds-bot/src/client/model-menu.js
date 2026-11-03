@@ -3,12 +3,19 @@ import { createPortal } from 'react-dom'
 import { currentPart } from './text.js'
 import { CheckIcon, SlidersIcon } from './icons.js'
 import { BotMark } from './mark.js'
-import { openHarnessOnboarding, openHarnessSettings } from './sidebar.js'
+import { LOCAL_SETTINGS_NOTE, canEditProviders, openHarnessOnboarding, openHarnessSettings } from './sidebar.js'
 import { SPRING_POP, SPRING_SHAPE, spring, useLinger } from './motion.js'
 import { usePhone, viewportHeight } from './mobile.js'
 import { t } from './i18n.js'
 
 const MENU_EXIT_MS = 120
+
+// The shell's Models page needs a page opened on the machine running DSH; over the
+// network it cannot read the provider directory. The row says so instead of opening it.
+function ProvidersRow({ onOpen }) {
+  if (canEditProviders()) return onOpen()
+  return h('div', { className: 'bt-menu-note' }, t(LOCAL_SETTINGS_NOTE))
+}
 
 // -------------------------------------------------------------------------
 // A Bot's model: the picker in its details panel and settings, and the message its
@@ -186,7 +193,7 @@ export function ModelMenu({ bot, roster, actions, run, wide = false, onPick, onP
         : h('div', { className: 'bt-model-none' }, t('No models are set up in DeepSeek Harness yet.')),
       effortRows(reasoning).length > 0 ? h(EffortRows, { reasoning, current: picked, onPick: pickEffort }) : null,
       h('div', { className: 'bt-menu-sep', role: 'separator' }),
-      h('button', { type: 'button', role: 'menuitem', onClick: () => { close(); openHarnessSettings() } }, h(SlidersIcon), h('span', { className: 'bt-menu-label' }, t('Models and providers…')))), document.body) : null)
+      h(ProvidersRow, { onOpen: () => h('button', { type: 'button', role: 'menuitem', onClick: () => { close(); openHarnessSettings() } }, h(SlidersIcon), h('span', { className: 'bt-menu-label' }, t('Models and providers…'))) })), document.body) : null)
 }
 
 // The model that reads images for the Bot: a pick of its own, or the model it
@@ -228,7 +235,7 @@ export function ImageModelMenu({ bot, roster, actions, run, wide = false }) {
       models.length > 0 ? h(ModelRows, { roster: { ...roster, models }, current: bot.imageModel, onPick: pick })
         : h('div', { className: 'bt-model-none' }, t('No models can read images yet.')),
       h('div', { className: 'bt-menu-sep', role: 'separator' }),
-      h('button', { type: 'button', role: 'menuitem', onClick: () => { close(); openHarnessSettings() } }, h(SlidersIcon), h('span', { className: 'bt-menu-label' }, t('Models and providers…')))), document.body) : null)
+      h(ProvidersRow, { onOpen: () => h('button', { type: 'button', role: 'menuitem', onClick: () => { close(); openHarnessSettings() } }, h(SlidersIcon), h('span', { className: 'bt-menu-label' }, t('Models and providers…'))) })), document.body) : null)
 }
 
 // The card a Bot's chat opens on while the Bot has no model, or has one that is no
@@ -269,7 +276,9 @@ export function ModelChoiceDock({ sessionId, useRoster, actions }) {
             title: model.ref === roster.defaultModel ? `${model.ref} · ${t('Harness default')}` : model.ref,
             onClick: () => pick(model.ref),
           }, model.name, busy === model.ref ? h('span', { className: 'bt-model-spin', 'aria-label': t('Saving…') }) : null))))),
-        h('button', { key: 'manage', type: 'button', className: 'bt-model-chip bt-model-chip-quiet', onClick: openHarnessSettings }, h(SlidersIcon), t('Manage models')),
+        canEditProviders()
+          ? h('button', { key: 'manage', type: 'button', className: 'bt-model-chip bt-model-chip-quiet', onClick: openHarnessSettings }, h(SlidersIcon), t('Manage models'))
+          : h('div', { key: 'manage', className: 'bt-model-note' }, t(LOCAL_SETTINGS_NOTE)),
       ]
   return h('div', { className: 'bt-model-dock' },
     h('div', { className: 'bt-astack', 'data-lead': '' },
@@ -287,8 +296,9 @@ export function ModelChoiceDock({ sessionId, useRoster, actions }) {
 function setupChoices(actions) {
   return [
     actions.canSignIn?.() ? [t('Sign in to DeepSeek'), () => actions.signIn()] : null,
-    [t('Enter a DeepSeek API key'), () => openHarnessOnboarding('deepseek-official')],
-    [t('Open settings to set up a custom model'), openHarnessSettings],
+    ...(canEditProviders()
+      ? [[t('Enter a DeepSeek API key'), () => openHarnessOnboarding('deepseek-official')], [t('Open settings to set up a custom model'), openHarnessSettings]]
+      : []),
   ].filter(Boolean)
 }
 
@@ -346,6 +356,7 @@ export const MODEL_CSS = `
 .bt-model-chip:disabled{cursor:default}
 .bt-model-chip:disabled:not([aria-busy]){opacity:.5}
 .bt-model-error{margin-left:30px}
+.bt-model-note{margin-left:30px;max-width:min(560px,calc(100% - 30px));font-size:12px;line-height:17px;color:var(--bt-ink-3)}
 @keyframes bt-model-in{from{opacity:0;transform:translateY(6px)}}
 .bt-model-spin{flex:none;width:14px;height:14px;border-radius:50%;border:1.5px solid var(--bt-line-2);border-top-color:var(--bt-ink-2);animation:bt-model-spin .7s linear infinite}
 @keyframes bt-model-spin{to{transform:rotate(360deg)}}

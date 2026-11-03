@@ -105,9 +105,11 @@ export function install(rt) {
         if (command === '') throw new Error('Enter a command for the MCP server.')
         const args = strings(body.args)
         const env = stringMap(body.env, 'Environment variables')
+        const timeoutMs = Math.min(1_800_000, Math.max(30_000, Math.round(Number(body.toolCallTimeoutMs) || 0) || 0)) || undefined
         const changed = !previous || previous.kind !== 'mcp' || previous.transport !== 'stdio'
           || previous.command !== command || !same(previous.args ?? [], args) || !same(previous.env ?? {}, env)
-        Object.assign(item, { transport, command, args, env, approved: ui ? true : changed ? false : previous.approved === true })
+          || (previous.toolCallTimeoutMs ?? undefined) !== timeoutMs
+        Object.assign(item, { transport, command, args, env, ...(timeoutMs === undefined ? {} : { toolCallTimeoutMs: timeoutMs }), approved: ui ? true : changed ? false : previous.approved === true })
       } else {
         const url = String(body.url ?? '').trim()
         try {
@@ -260,10 +262,14 @@ export function install(rt) {
     return resolved
   }
   const resolveUrl = (url, botId) => String(url).replace(SECRET_REFERENCE, (_match, name) => encodeUrlComponent(secretFor(name, botId)))
+  // Image generation (qwen edits especially) can take minutes; the MCP client's
+  // own default would kill it at 60s, which looks like an upstream failure.
+  const SLOW_TOOL_TIMEOUT_MS = { 'image-gen': 600_000 }
   const configFor = (item, botId) => {
     if (item.kind === 'skill') return { name: item.name, description: item.description, content: item.content }
-    if (item.transport === 'stdio') return { transport: 'stdio', serverName: item.name, command: item.command, args: item.args ?? [], env: resolveValues(item.env, botId), failOnStartupError: true }
-    return { transport: 'streamable-http', serverName: item.name, url: resolveUrl(item.url, botId), headers: resolveValues(item.headers, botId), failOnStartupError: true }
+    const toolCallTimeoutMs = item.toolCallTimeoutMs ?? SLOW_TOOL_TIMEOUT_MS[item.name]
+    if (item.transport === 'stdio') return { transport: 'stdio', serverName: item.name, command: item.command, args: item.args ?? [], env: resolveValues(item.env, botId), failOnStartupError: true, ...(toolCallTimeoutMs === undefined ? {} : { toolCallTimeoutMs }) }
+    return { transport: 'streamable-http', serverName: item.name, url: resolveUrl(item.url, botId), headers: resolveValues(item.headers, botId), failOnStartupError: true, ...(toolCallTimeoutMs === undefined ? {} : { toolCallTimeoutMs }) }
   }
   const disposeMount = async mount => {
     if (mount?.fiber) await Promise.resolve().then(() => mount.fiber.dispose()).catch(() => {})

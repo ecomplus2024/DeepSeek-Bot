@@ -81,7 +81,7 @@ export const TEAM_TOOLS = [
   'gemlogin_profiles', 'gemlogin_open', 'gemlogin_close', 'gemlogin_browse',
   'chromium_open', 'chromium_close', 'chromium_browse',
   'use_computer',
-  'zalo_threads', 'zalo_read', 'zalo_send',
+  'zalo_threads', 'zalo_read', 'zalo_send', 'telegram_send',
 ]
 
 // Zalo (src/host/zalo.js): a bound Bot's watched threads keep this many inbound
@@ -107,6 +107,20 @@ export const ZALO_FETCH_MAX = 200
 // A requestOldMessages sync is answered by an 'old_messages' event — or not at
 // all on a dead socket, so a read waits this long then serves what is stored.
 export const ZALO_SYNC_TIMEOUT_MS = 10_000
+// Telegram (src/host/telegram.js): a Bot reaches the user through its own bot
+// token, so no inbound port is needed — getUpdates long-polls out. Telegram
+// caps one message at 4096 characters; replies are split under that. Sends are
+// spaced per chat so a burst does not trip Telegram's own rate limit.
+export const TELEGRAM_MESSAGE_MAX = 4000
+// Telegram photo captions stop at 1024 characters; longer text follows as messages.
+export const TELEGRAM_CAPTION_MAX = 1024
+export const TELEGRAM_POLL_TIMEOUT_S = 50
+export const TELEGRAM_SEND_GAP_MS = 1_200
+// A pairing code is typed once in Telegram to bind the chat to its Bot; it
+// lives this long before the Bot asks for a fresh one.
+export const TELEGRAM_PAIR_TTL_MS = 24 * 60 * 60 * 1000
+// Photos the Bot sends or receives stay under this size, like Zalo's own limit.
+export const TELEGRAM_IMAGE_MAX_BYTES = 15 * 1024 * 1024
 // Answers a group gives to what members post after the round moved on (their finished
 // work, mostly), before the user speaks there again.
 export const ROOM_LATE_ROUNDS = 10

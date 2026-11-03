@@ -100,6 +100,9 @@ const ZH = {
   Disconnect: '断开',
   Connect: '连接',
   'GitHub token': 'GitHub token',
+  'Sending…': '发送中…',
+  'Sending an image…': '正在发送图片…',
+  'Uploading an attachment…': '正在上传附件…',
   'Create a token on GitHub': '去 GitHub 生成 token',
   'Could not reach GitHub': '连不上 GitHub',
   'GitHub did not accept this token': 'GitHub 不接受这个 token',
@@ -898,6 +901,7 @@ const ZH = {
   'Create task': '创建任务',
   'Turn on Automation tasks in DSH': '在 DSH 里打开「自动化任务」',
   'Switch on Automation tasks on the Plugins page in Harness settings.': '在 Harness 设置的插件页启用「自动化任务」。',
+  'Harness settings open on the machine running DSH only: use http://127.0.0.1:3080 there. The models already served stay pickable here.': 'Harness 设置只能在运行 DSH 的机器上打开：请在那台机器上访问 http://127.0.0.1:3080。这里仍可选用已提供的模型。',
   'Open Harness settings': '打开 Harness 设置',
   'New task': '新建任务',
   'No scheduled tasks yet.': '还没有定时任务。',
@@ -929,6 +933,18 @@ const ZH = {
   'Up one level': '上一级',
   'No folders inside.': '里面没有文件夹。',
   'Some folders are not shown.': '还有一些文件夹没有显示。',
+
+  // Settings → Connectors → Telegram
+  'Telegram · {bot}': 'Telegram · {bot}',
+  'Paired as @{username}': '已与 @{username} 配对',
+  Paired: '已配对',
+  '@{username} — waiting for the pairing code': '@{username} — 等待配对码',
+  'Not paired yet': '尚未配对',
+  'Open @{username} in Telegram and send that code.': '在 Telegram 里打开 @{username}，发送这个配对码。',
+  'Or create a bot on @BotFather': '或到 @BotFather 新建一个 Bot',
+  'Reach a Bot from your phone, and let it message you first': '用手机找到 Bot，也让 Bot 主动给你发消息',
+  'Telegram bot token': 'Telegram Bot Token',
+  'Create a bot on @BotFather, then paste its token': '到 @BotFather 新建 Bot，然后粘贴它的 Token',
 }
 
 // Host errors stay English, since Bots read them too; they are translated where the
@@ -1082,6 +1098,9 @@ const VI = {
   '{"API_KEY": "$DSH_SECRET_MY_KEY"}': '{"API_KEY": "$DSH_SECRET_MY_KEY"}',
   URL: 'URL',
   'Headers (JSON)': 'Header (JSON)',
+  'Sending…': 'Đang gửi…',
+  'Sending an image…': 'Đang gửi ảnh…',
+  'Uploading an attachment…': 'Đang tải tệp lên…',
   'Skill instructions': 'Hướng dẫn kỹ năng',
   'Save changes': 'Lưu thay đổi',
   Edit: 'Sửa',
@@ -1901,6 +1920,7 @@ const VI = {
   'Create task': 'Tạo tác vụ',
   'Turn on Automation tasks in DSH': 'Bật “Tác vụ tự động” trong DSH',
   'Switch on Automation tasks on the Plugins page in Harness settings.': 'Bật “Tác vụ tự động” ở trang Plugin trong cài đặt Harness.',
+  'Harness settings open on the machine running DSH only: use http://127.0.0.1:3080 there. The models already served stay pickable here.': 'Cài đặt Harness chỉ mở được trên máy đang chạy DSH: vào http://127.0.0.1:3080 ở máy đó. Ở đây vẫn chọn được các model đã có.',
   'Open Harness settings': 'Mở cài đặt Harness',
   'New task': 'Tác vụ mới',
   'No scheduled tasks yet.': 'Chưa có tác vụ hẹn giờ.',
@@ -1932,6 +1952,18 @@ const VI = {
   'Up one level': 'Lên một cấp',
   'No folders inside.': 'Không có thư mục nào bên trong.',
   'Some folders are not shown.': 'Một số thư mục không được hiển thị.',
+
+  // Settings → Connectors → Telegram
+  'Telegram · {bot}': 'Telegram · {bot}',
+  'Paired as @{username}': 'Đã ghép với @{username}',
+  Paired: 'Đã ghép nối',
+  '@{username} — waiting for the pairing code': '@{username} — đang chờ mã ghép nối',
+  'Not paired yet': 'Chưa ghép nối',
+  'Open @{username} in Telegram and send that code.': 'Mở @{username} trong Telegram và gửi mã đó.',
+  'Or create a bot on @BotFather': 'Hoặc tạo bot mới ở @BotFather',
+  'Reach a Bot from your phone, and let it message you first': 'Nhắn cho Bot từ điện thoại, và để Bot chủ động nhắn bạn trước',
+  'Telegram bot token': 'Token bot Telegram',
+  'Create a bot on @BotFather, then paste its token': 'Tạo bot ở @BotFather rồi dán token vào đây',
 }
 
 const HOST_ERRORS_VI = [

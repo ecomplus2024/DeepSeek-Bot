@@ -14,6 +14,11 @@ export function fakeAttachments() {
       files.set(ref.attachmentId, data)
       return ref
     },
+    async readImage(ref) {
+      const data = files.get(ref.attachmentId)
+      if (data === undefined) throw new Error('no such file')
+      return { ref, data }
+    },
     async* readFileStream(ref) {
       const data = files.get(ref.attachmentId)
       if (data === undefined) throw new Error('no such file')

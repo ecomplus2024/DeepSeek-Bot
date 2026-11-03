@@ -8,7 +8,7 @@ import { SHELL_CSS, CONVERSATION_CSS, MOBILE_CSS, installStyles, installCompiled
 import { lookOf } from './mark.js'
 import { TeamSidebar, ConnectPlugins, YouAvatar, AccountLauncher, FooterAccount, BrandMark, BrandName, BotReturn, SIDEBAR_CSS, RETURN_CSS, holdShellShortcuts } from './sidebar.js'
 import { DrawerButton, HeaderPill } from './header.js'
-import { ComposerPlus, ComposerVoice, menuIcons } from './composer.js'
+import { ComposerPlus, ComposerVoice, SENDING_CSS, SendingDock, menuIcons } from './composer.js'
 import { CHATS_SOURCE, atSources } from './at-menu.js'
 import { VOICE_BUNDLE } from './speech.js'
 import { sameVersion } from './dsh-offer.js'
@@ -573,6 +573,9 @@ export function apply(ctx) {
     zaloBind: (botId, uid) => after(call('zalo-bind', { botId, uid })),
     zaloThreads: botId => call('zalo-threads', { botId }),
     zaloThreadMode: (botId, thread) => after(call('zalo-thread-mode', { botId, ...thread })),
+    telegramConnect: (botId, token) => after(call('telegram-connect', { botId, token })),
+    telegramDisconnect: botId => after(call('telegram-disconnect', { botId })),
+    telegramReconnect: botId => after(call('telegram-reconnect', { botId })),
     saveCapability: capability => after(call('capability-save', capability)),
     deleteCapability: name => after(call('capability-delete', { name })),
     approveCapability: name => after(call('capability-approve', { name })),
@@ -838,6 +841,7 @@ export function apply(ctx) {
     () => installCompiledStyles(FEEDBACK_CSS, 'feedback'),
     () => installCompiledStyles(ABOUT_CSS, 'about'),
     () => installCompiledStyles(MEMBER_CSS, 'members'),
+    () => installCompiledStyles(SENDING_CSS, 'sending'),
     () => installCompiledStyles(USER_MESSAGE_CSS, 'user-messages'),
     browsers ? () => installCompiledStyles(BROWSER_CSS, 'browser') : null,
     // Last, so its phone-width rules win ties against the blocks above.
@@ -896,6 +900,7 @@ export function apply(ctx) {
     () => shadow('conversation.input.dock', { id: 'bot-model', order: -110, inject: face }, ModelChoiceDock),
     () => shadow('conversation.input.dock', { id: 'bot-question', order: -100, inject: face }, QuestionDock),
     () => shadow('conversation.input.dock', { id: 'bot-secret', order: -90, inject: face }, SecretDock),
+    () => shadow('conversation.input.dock', { id: 'bot-sending', order: -80, inject: face }, SendingDock),
   ]
   // The return button belongs to neither group: it renders only in Agent mode.
   ctx.effect(() => {

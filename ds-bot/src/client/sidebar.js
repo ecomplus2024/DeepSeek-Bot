@@ -261,7 +261,9 @@ const readUnlocks = () => {
   let list = []
   try { list = JSON.parse(localStorage.getItem(STORAGE.spaceUnlocks) ?? '[]') } catch { /* storage unavailable */ }
   const set = new Set(list)
-  const gate = /(?:^|;\s*)ds-bot-unlocked=([^;]+)/.exec(document.cookie ?? '')?.[1]
+  // A page rendered outside a browser (a test, a prerender) has no cookie jar.
+  let gate
+  try { gate = /(?:^|;\s*)ds-bot-unlocked=([^;]+)/.exec(document.cookie ?? '')?.[1] } catch { gate = undefined }
   if (gate) set.add(decodeURIComponent(gate))
   return set
 }
@@ -517,6 +519,16 @@ export function holdShellShortcuts(shortcuts) {
   shellShortcuts = shortcuts
   return () => { if (shellShortcuts === shortcuts) shellShortcuts = null }
 }
+
+// DSH keeps its settings document on the Host only for a page opened on that machine;
+// a page reached over the network (a tunnel, another device) gets a process-local one
+// and its Models page cannot list providers. The plugin's own pickers work either way,
+// since they read the team's served models over its API.
+export const canEditProviders = () => typeof location === 'undefined'
+  || ['localhost', '127.0.0.1', '::1', '[::1]'].includes(location.hostname)
+// What the plugin says in place of the shell's own pages there: the models the team
+// already serves stay pickable, since the plugin reads them over its own API.
+export const LOCAL_SETTINGS_NOTE = 'Harness settings open on the machine running DSH only: use http://127.0.0.1:3080 there. The models already served stay pickable here.'
 
 // DeepSeek Harness hands its settings opener only to the settings.launcher seat. When
 // the Desktop's account menu holds that seat, its first item (Settings) is the way in;

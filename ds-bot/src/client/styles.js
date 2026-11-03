@@ -527,6 +527,12 @@ button.bt-set-row:hover{background:var(--bt-hover)}
 .bt-zalo-search{height:32px;position:sticky;top:0;z-index:1}
 .bt-zalo-more{align-self:center;margin-top:2px}
 
+/* Settings → Connectors → Telegram. */
+.bt-tg-code{display:flex;align-items:center;gap:8px;padding-left:48px}
+.bt-tg-code-value{font-family:var(--bt-mono,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:16px;letter-spacing:.16em;color:var(--bt-ink-1);user-select:all}
+.bt-tg-steps{display:flex;flex-direction:column;gap:4px;padding-left:48px;font-size:12px;line-height:17px;color:var(--bt-ink-3)}
+.bt-tg-steps a{color:var(--bt-ink-2)}
+
 /* Shell chrome reshaped for the team view. Selectors use stable data attributes where the
    shell offers them and CSS-module name suffixes elsewhere. */
 [class*="_newSession"],nav[class*="_panelList"],[class*="_logoRow"]>[class*="_brand"],[class*="_logoRow"]:not(:has([class*="_toggle"])){display:none!important}
@@ -623,6 +629,7 @@ button:hover .bt-you{background:color-mix(in srgb,var(--bt-ink) 9%,var(--bt-side
 .bt-menu[data-leaving]{pointer-events:none;animation:bt-pop-out .12s cubic-bezier(.4,0,1,1) forwards}
 .bt-menu-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bt-menu-hint{flex:none;color:var(--bt-ink-3);font-size:12px;font-variant-numeric:tabular-nums}
+.bt-menu-note{padding:6px 8px;max-width:280px;color:var(--bt-ink-3);font-size:12px;line-height:17px;white-space:normal}
 .bt-palette-layer{position:fixed;inset:var(--dsh-frame-chrome-top,0px) 0 0;z-index:70;pointer-events:auto;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}
 .bt-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.46);animation:bt-fade .22s ease-out}
 .bt-palette{position:absolute;top:50%;left:50%;width:min(560px,92vw);transform:translate(-50%,-50%);display:flex;flex-direction:column;border-radius:12px;background:var(--bt-main);border:1px solid var(--bt-line-2);box-shadow:0 24px 48px -12px rgba(0,0,0,.25);overflow:hidden;color:var(--bt-ink);animation:bt-palette-in ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing},bt-veil-in .2s ease-out}

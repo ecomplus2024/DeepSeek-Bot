@@ -56,14 +56,15 @@ function ConnectorRow({ connector, actions }) {
     error ? h('div', { className: 'bt-connector-error', role: 'alert' }, error) : null)
 }
 
-// Settings → Connectors: one row per connector, then the Zalo card.
+// Settings → Connectors: one row per connector, then the Zalo card, then Telegram.
 export function ConnectorsPage({ roster, actions }) {
   const list = roster?.connectors ?? []
   return h('section', { className: 'bt-set-section' },
     h('div', { className: 'bt-set-card bt-connectors-card' }, list.length === 0
       ? h('div', { className: 'bt-set-row' }, h('span', { className: 'bt-set-hint' }, t('No connectors')))
       : list.map(connector => h(ConnectorRow, { key: connector.id, connector, actions }))),
-    h(ZaloCard, { roster, actions }))
+    h(ZaloCard, { roster, actions }),
+    h(TelegramCard, { roster, actions }))
 }
 
 export const ZaloMark = () => h('svg', { width: 20, height: 20, viewBox: '0 0 16 16', fill: 'currentColor', 'aria-hidden': true },
@@ -249,4 +250,100 @@ export function ZaloCard({ roster, actions }) {
     })),
     showConnect ? h(ZaloConnect, { roster, actions, login }) : null,
     bound.length === 0 && !showConnect ? h('div', { className: 'bt-set-row' }, h('span', { className: 'bt-set-hint' }, t('No Bots to link'))) : null)
+}
+
+export const TelegramMark = () => h('svg', { width: 20, height: 20, viewBox: '0 0 16 16', fill: 'currentColor', 'aria-hidden': true },
+  h('path', { d: 'M8 0a8 8 0 100 16A8 8 0 008 0zm3.9 5.5l-1.3 6.1c-.1.5-.4.6-.8.4l-2.2-1.6-1.1 1c-.1.1-.2.2-.4.2l.2-2.2 4-3.6c.2-.2 0-.3-.2-.1L5.9 8.6 3.7 7.9c-.5-.2-.5-.5.1-.7l7.4-2.9c.4-.1.8.1.7.7z' }))
+
+const BOTFATHER = 'https://t.me/BotFather'
+
+function telegramStatus(entry) {
+  if (entry === undefined) return ''
+  if (entry.owner) return entry.username ? t('Paired as @{username}', { username: entry.username }) : t('Paired')
+  if (entry.state === 'error') return t('Could not connect: {error}', { error: entry.error ?? '' })
+  if (entry.username) return t('@{username} — waiting for the pairing code', { username: entry.username })
+  return t('Not paired yet')
+}
+
+function TelegramPairing({ entry }) {
+  if (entry?.owner || entry?.code === null || entry?.code === undefined) return null
+  return h('div', null,
+    h('div', { className: 'bt-tg-code' },
+      h('span', { className: 'bt-tg-code-value' }, entry.code),
+      h('button', {
+        type: 'button', className: 'bt-soft bt-soft-sm',
+        onClick: () => void navigator.clipboard?.writeText(`/start ${entry.code}`).catch(() => {}),
+      }, t('Copy'))),
+    h('div', { className: 'bt-tg-steps' },
+      h('span', null, t('Open @{username} in Telegram and send that code.', { username: entry.username || 'your bot' })),
+      h('a', { href: BOTFATHER, target: '_blank', rel: 'noopener noreferrer' }, t('Or create a bot on @BotFather'))))
+}
+
+function TelegramBound({ bot, entry, actions }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+  const run = (task) => {
+    setBusy(true)
+    setError(null)
+    task.catch(failure => setError(failure?.message ?? String(failure))).finally(() => setBusy(false))
+  }
+  const state = entry?.state === 'error' ? 'error' : entry?.state === 'ready' ? 'ready' : 'off'
+  return h('div', { className: 'bt-connector', 'data-state': state },
+    h('div', { className: 'bt-connector-head' },
+      h('span', { className: 'bt-connector-mark' }, h(TelegramMark)),
+      h('span', { className: 'bt-connector-text' },
+        h('span', { className: 'bt-connector-name' }, t('Telegram · {bot}', { bot: bot.name })),
+        h('span', { className: 'bt-connector-status' }, telegramStatus(entry))),
+      h('span', { className: 'bt-connector-actions' },
+        h('button', { type: 'button', className: 'bt-soft bt-soft-sm', disabled: busy, onClick: () => run(actions.telegramReconnect(bot.id)) }, t('Reconnect')),
+        h('button', { type: 'button', className: 'bt-soft bt-soft-sm', disabled: busy, onClick: () => run(actions.telegramDisconnect(bot.id)) }, t('Disconnect')))),
+    h(TelegramPairing, { entry }),
+    error ? h('div', { className: 'bt-connector-error', role: 'alert' }, error) : null)
+}
+
+function TelegramConnect({ roster, actions }) {
+  const unbound = (roster?.bots ?? []).filter(bot => roster?.telegram?.bots?.[bot.id]?.owner === undefined || roster?.telegram?.bots?.[bot.id]?.owner === null)
+  const [botId, setBotId] = useState('')
+  const [token, setToken] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+  const picked = botId || unbound[0]?.id || ''
+  const connect = () => {
+    if (busy || picked === '' || token.trim() === '') return
+    setBusy(true)
+    setError(null)
+    actions.telegramConnect(picked, token)
+      .then(() => setToken(''), failure => setError(failure?.message ?? String(failure)))
+      .finally(() => setBusy(false))
+  }
+  return h('div', { className: 'bt-connector', 'data-state': 'off' },
+    h('div', { className: 'bt-connector-head' },
+      h('span', { className: 'bt-connector-mark' }, h(TelegramMark)),
+      h('span', { className: 'bt-connector-text' },
+        h('span', { className: 'bt-connector-name' }, 'Telegram'),
+        h('span', { className: 'bt-connector-status' }, t('Reach a Bot from your phone, and let it message you first'))),
+      h('span', { className: 'bt-connector-actions' },
+        unbound.length > 1
+          ? h('select', { className: 'bt-select bt-zalo-bot', value: picked, onChange: event => setBotId(event.target.value) },
+              unbound.map(bot => h('option', { key: bot.id, value: bot.id }, bot.name)))
+          : null)),
+    h('div', { className: 'bt-connector-form' },
+      h('label', { className: 'bt-q-field bt-secret-field' }, h(MaskedInput, { value: token, onChange: setToken, onEnter: connect, label: t('Telegram bot token') })),
+      h('div', { className: 'bt-connector-form-row' },
+        h('a', { className: 'bt-connector-link', href: BOTFATHER, target: '_blank', rel: 'noopener noreferrer' }, t('Create a bot on @BotFather, then paste its token')),
+        h('button', { type: 'button', className: 'bt-soft bt-soft-sm', disabled: busy || token.trim() === '' || picked === '', onClick: connect }, busy ? t('Connecting…') : t('Connect')))),
+    error ? h('div', { className: 'bt-connector-error', role: 'alert' }, error) : null)
+}
+
+// Each Bot gets its own Telegram bot: one token, one paired chat, and the Bot
+// can message the user first through telegram_send.
+export function TelegramCard({ roster, actions }) {
+  const telegram = roster?.telegram ?? { bots: {} }
+  const bots = roster?.bots ?? []
+  const bound = bots.filter(bot => telegram.bots?.[bot.id] !== undefined)
+  const unbound = bots.filter(bot => telegram.bots?.[bot.id] === undefined)
+  return h('div', { className: 'bt-set-card bt-connectors-card' },
+    bound.map(bot => h(TelegramBound, { key: bot.id, bot, entry: telegram.bots[bot.id], actions })),
+    unbound.length > 0 ? h(TelegramConnect, { roster, actions }) : null,
+    bound.length === 0 && unbound.length === 0 ? h('div', { className: 'bt-set-row' }, h('span', { className: 'bt-set-hint' }, t('No Bots to link'))) : null)
 }
