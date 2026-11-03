@@ -19,3 +19,15 @@ node_modules/
 /docker/.env
 /.env
 /docker-compose.override.yml
+
+# Local Bot tokens (Telegram / other connectors). Never commit these.
+/tokens/
+*.tokens.txt
+
+# Local repair, reframe and restart scratch files.
+/backup-*/
+check-errors.cjs
+reframe-*.cjs
+repair-*.log
+restart-dsh.log
+restart-dsh.ps1
