@@ -438,7 +438,7 @@ test('browserExecutablePath must be a string when configured', () => {
   const home = mkdtempSync(join(tmpdir(), 'ds-bot-browser-plugin-'))
   try {
     assert.throws(
-      () => apply(fakeContext(), { home, browserPlugin: 'refs', browserExecutablePath: 42 }),
+      () => apply(fakeContext(), { home, wake: false, browserPlugin: 'refs', browserExecutablePath: 42 }),
       /browserExecutablePath must be a string/,
     )
   } finally {
