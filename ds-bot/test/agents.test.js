@@ -211,8 +211,8 @@ test('TEAM_TOOLS names exactly the tools ds-bot defines for Bot sessions', async
   // stand in for it.
   const { stop, ctx } = start(TEAM, { config: { browser: true, computer: true } })
   t.after(stop)
-  // Most team tools are scoped onto each Bot session; the connector tools register
-  // globally, so a Bot session sees those without scoping. Together they are TEAM_TOOLS.
+  // All team tools, connector tools included, are scoped onto each Bot session;
+  // the union of the scope and the global layer is TEAM_TOOLS.
   const served = [...new Set([...rt.teamTools.map(d => d.name), ...ctx.registeredTools.keys()])].sort()
   assert.deepEqual(served, [...TEAM_TOOLS].sort())
 })
@@ -267,8 +267,8 @@ test('a Bot Session gets the team tools in its own scope; a DSH Agent Session ge
     },
   })
   await flush()
-  // The scope carries the scoped team tools; the connector tools are global, so
-  // the session sees those without scoping.
+  // All team tools, connector tools included, are scoped onto each Bot session;
+  // the union of the scope and the global layer is TEAM_TOOLS.
   const onScope = scoped.filter(entry => entry.sessionId === 'm1').map(entry => entry.name).sort()
   assert.deepEqual(onScope, rt.teamTools.map(d => d.name).sort())
   assert.deepEqual([...new Set([...onScope, ...ctx.registeredTools.keys()])].sort(),

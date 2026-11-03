@@ -18,7 +18,7 @@ export const own = (table, key) => (table != null && Object.hasOwn(table, key) ?
 export function install(rt) {
   const { ctx, home, statePath } = rt
 
-  /** @type {{version:1, workspaceId?:string, mainBotIds:string[], bots:Record<string,any>, privateArchives:any[], rooms:Record<string,any>, spaces:Record<string,any>, agents:Record<string,any>, capabilities:{items:Record<string,any>}, exchanges:any[], exchangeTurns:Record<string,number[]>, revision:number}} */
+  /** @type {{version:1, workspaceId?:string, mainBotIds:string[], bots:Record<string,any>, privateArchives:any[], rooms:Record<string,any>, spaces:Record<string,any>, agents:Record<string,any>, capabilities:{items:Record<string,any>}, exchanges:any[], exchangeTurns:Record<string,number[]>, works:Record<string,any>, requests:Record<string,any>, questions:Record<string,any>, views:Record<string,any>, prefs:Record<string,any>, switching:Record<string,any>, zalo:Record<string,any>, telegram:Record<string,any>, revision:number}} */
   const state = { version: 1, mainBotIds: [], bots: {}, privateArchives: [], rooms: {}, spaces: {}, agents: {}, capabilities: { items: {} }, exchanges: [], exchangeTurns: {}, works: {}, requests: {}, questions: {}, views: {}, prefs: {}, switching: {}, zalo: {}, telegram: {}, revision: 0 }
   let loaded = null
   let writing = Promise.resolve()
